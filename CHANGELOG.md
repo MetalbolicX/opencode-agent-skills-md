@@ -18,6 +18,14 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Changed
+
+- Installation method now uses npm package via OpenCode config instead of git clone + symlink
+
+### Removed
+
+- Removed `INSTALL.md` (no longer needed with simplified installation)
+
 ## [0.4.0]
 
 ### Changed
