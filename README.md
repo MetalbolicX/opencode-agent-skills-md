@@ -107,3 +107,9 @@ The plugin listens for `session.compacted` events and re-injects the available s
 ## License
 
 opencode-agent-skills is licensed under the MIT license. See the [`LICENSE`](LICENSE) file for more information.
+
+---
+
+opencode-agent-skills is not built by, or affiliated with, the OpenCode team.
+
+OpenCode is ©2025 Anomaly.
