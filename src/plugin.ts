@@ -85,6 +85,84 @@ function parseYamlFrontmatter(text: string): Record<string, unknown> {
   return result;
 }
 
+/**
+ * Calculate Levenshtein edit distance between two strings.
+ * Used for fuzzy matching suggestions when skill/script names are not found.
+ * @internal - exported for testing
+ */
+export function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  
+  // Create distance matrix
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i || j)
+  );
+  
+  // Fill matrix using dynamic programming
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i]![j] = Math.min(
+        dp[i - 1]![j]! + 1,                           // deletion
+        dp[i]![j - 1]! + 1,                           // insertion
+        dp[i - 1]![j - 1]! + (a[i - 1] !== b[j - 1] ? 1 : 0)  // substitution
+      );
+    }
+  }
+  
+  return dp[m]![n]!;
+}
+
+/**
+ * Find the closest matching string from a list of candidates.
+ * Uses combined scoring: prefix match (strongest), substring match, then Levenshtein distance.
+ * Returns the best match if similarity is above 0.4 threshold, otherwise null.
+ * @internal - exported for testing
+ */
+export function findClosestMatch(input: string, candidates: string[]): string | null {
+  if (candidates.length === 0) return null;
+  
+  const inputLower = input.toLowerCase();
+  let bestMatch: string | null = null;
+  let bestScore = 0;
+  
+  for (const candidate of candidates) {
+    const candidateLower = candidate.toLowerCase();
+    let score = 0;
+    
+    // Prefix match is strongest signal (0.9-1.0)
+    if (candidateLower.startsWith(inputLower)) {
+      score = 0.9 + (inputLower.length / candidateLower.length) * 0.1;
+      
+      // Boost score if prefix is followed by word boundary
+      const nextChar = candidateLower[inputLower.length];
+      if (nextChar && /[-_/.]/.test(nextChar)) {
+        score += 0.05; // Word boundary bonus
+      }
+    } else if (inputLower.startsWith(candidateLower)) {
+      score = 0.8;
+    }
+    // Substring match is decent (0.7)
+    else if (candidateLower.includes(inputLower) || inputLower.includes(candidateLower)) {
+      score = 0.7;
+    }
+    // Fall back to Levenshtein similarity
+    else {
+      const distance = levenshtein(inputLower, candidateLower);
+      const maxLength = Math.max(inputLower.length, candidateLower.length);
+      score = 1 - (distance / maxLength);
+    }
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = candidate;
+    }
+  }
+  
+  // Only return match if above threshold
+  return bestScore >= 0.4 ? bestMatch : null;
+}
+
 interface Script {
   relativePath: string;
   absolutePath: string;
@@ -842,6 +920,15 @@ This skill may reference Claude Code tools. Use OpenCode equivalents:
           }
 
           if (filtered.length === 0) {
+            if (args.query) {
+              const allSkillNames = allSkills.map(s => s.name);
+              const suggestion = findClosestMatch(args.query, allSkillNames);
+              
+              if (suggestion) {
+                return `No skills found matching "${args.query}". Did you mean "${suggestion}"?`;
+              }
+            }
+            
             return "No skills found matching your query.";
           }
 
@@ -868,7 +955,14 @@ This skill may reference Claude Code tools. Use OpenCode equivalents:
           const skill = resolveSkill(args.skill, skillsByName);
 
           if (!skill) {
-            return `Skill "${args.skill}" not found. Use find_skills to see available skills.`;
+            const allSkillNames = allSkills.map(s => s.name);
+            const suggestion = findClosestMatch(args.skill, allSkillNames);
+            
+            if (suggestion) {
+              return `Skill "${args.skill}" not found. Did you mean "${suggestion}"?`;
+            }
+            
+            return `Skill "${args.skill}" not found. Use find_skills to list available skills.`;
           }
 
           // Security: ensure path doesn't escape skill directory
@@ -922,13 +1016,27 @@ ${content}
           const skill = resolveSkill(args.skill, skillsByName);
 
           if (!skill) {
-            return `Skill "${args.skill}" not found. Use find_skills to see available skills.`;
+            const allSkillNames = allSkills.map(s => s.name);
+            const suggestion = findClosestMatch(args.skill, allSkillNames);
+            
+            if (suggestion) {
+              return `Skill "${args.skill}" not found. Did you mean "${suggestion}"?`;
+            }
+            
+            return `Skill "${args.skill}" not found. Use find_skills to list available skills.`;
           }
 
           const script = skill.scripts.find(s => s.relativePath === args.script);
 
           if (!script) {
-            const available = skill.scripts.map(s => s.relativePath).join(', ') || 'none';
+            const scriptPaths = skill.scripts.map(s => s.relativePath);
+            const suggestion = findClosestMatch(args.script, scriptPaths);
+            
+            if (suggestion) {
+              return `Script "${args.script}" not found in skill "${skill.name}". Did you mean "${suggestion}"?`;
+            }
+            
+            const available = scriptPaths.join(', ') || 'none';
             return `Script "${args.script}" not found in skill "${skill.name}". Available scripts: ${available}`;
           }
 
@@ -962,8 +1070,14 @@ ${content}
           const skill = resolveSkill(args.skill, skillsByName);
 
           if (!skill) {
-            const available = allSkills.map(s => s.name).join(', ');
-            return `Skill "${args.skill}" not found. Available skills: ${available}`;
+            const allSkillNames = allSkills.map(s => s.name);
+            const suggestion = findClosestMatch(args.skill, allSkillNames);
+            
+            if (suggestion) {
+              return `Skill "${args.skill}" not found. Did you mean "${suggestion}"?`;
+            }
+            
+            return `Skill "${args.skill}" not found. Use find_skills to list available skills.`;
           }
 
           // Get all files in the skill directory
