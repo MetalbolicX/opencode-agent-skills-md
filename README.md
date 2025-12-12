@@ -121,6 +121,12 @@ This means skills become part of the persistent conversation context and remain 
 
 On session start, the plugin automatically injects a list of all discovered skills wrapped in `<available-skills>` tags. This allows the agent to know what skills are available without needing to call `get_available_skills` first.
 
+### Automatic Skill Matching
+
+After the initial skills list is injected, the plugin monitors subsequent messages and uses semantic similarity to detect when a message relates to an available skill. When matches are found, it injects a prompt encouraging the agent to evaluate and load the relevant skills.
+
+This happens automatically - you don't need to remember skill names or explicitly request them.
+
 ### Superpowers Mode (optional)
 
 To get the strict Superpowers prompt, install the real Superpowers project (follow [their instructions](https://github.com/obra/superpowers)). We automatically pick up the `using-superpowers` skill from either of its supported homes:
