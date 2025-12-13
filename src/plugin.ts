@@ -23,6 +23,16 @@ import { GetAvailableSkills, ReadSkillFile, RunSkillScript, UseSkill } from "./t
 import { matchSkills, precomputeSkillEmbeddings } from "./embeddings";
 
 const setupCompleteSessions = new Set<string>();
+const loadedSkillsPerSession = new Map<string, Set<string>>();
+
+function getLoadedSkills(sessionID: string): Set<string> {
+  let set = loadedSkillsPerSession.get(sessionID);
+  if (!set) {
+    set = new Set<string>();
+    loadedSkillsPerSession.set(sessionID, set);
+  }
+  return set;
+}
 
 function formatMatchedSkillsInjection(
   matchedSkills: Array<{ name: string; description: string }>
@@ -114,11 +124,14 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
 
       const matchedSkills = await matchSkills(userText, skills);
 
-      if (matchedSkills.length === 0) {
+      const loadedSkills = getLoadedSkills(sessionID);
+      const newSkills = matchedSkills.filter(s => !loadedSkills.has(s.name));
+
+      if (newSkills.length === 0) {
         return;
       }
 
-      const injectionText = formatMatchedSkillsInjection(matchedSkills);
+      const injectionText = formatMatchedSkillsInjection(newSkills);
 
       const context: SessionContext = {
         model: output.message.model,
@@ -134,11 +147,13 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
         const context = await getSessionContext(client, sessionID);
         await maybeInjectSuperpowersBootstrap(directory, client, sessionID, context);
         await injectSkillsList(directory, client, sessionID, context);
+        loadedSkillsPerSession.delete(sessionID);
       }
 
       if (event.type === "session.deleted") {
         const sessionID = event.properties.info.id;
         setupCompleteSessions.delete(sessionID);
+        loadedSkillsPerSession.delete(sessionID);
       }
     },
 
@@ -146,7 +161,9 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
       get_available_skills: GetAvailableSkills(directory),
       read_skill_file: ReadSkillFile(directory, client),
       run_skill_script: RunSkillScript(directory, $),
-      use_skill: UseSkill(directory, client),
+      use_skill: UseSkill(directory, client, (sessionID, skillName) => {
+        getLoadedSkills(sessionID).add(skillName);
+      }),
     },
   };
 };
