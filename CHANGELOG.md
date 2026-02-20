@@ -18,6 +18,10 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed crash on macOS ARM64 (Apple Silicon) caused by `onnxruntime-node@1.21.0` segfault regression by pinning to 1.20.1 ([#31](https://github.com/joshuadavidthomas/opencode-agent-skills/issues/31), [microsoft/onnxruntime#24096](https://github.com/microsoft/onnxruntime/issues/24096))
+
 ## [0.6.4]
 
 ### Fixed
