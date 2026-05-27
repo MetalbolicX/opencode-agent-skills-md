@@ -1,27 +1,48 @@
 # opencode-agent-skills
 
-A dynamic skills plugin for OpenCode that provides tools for loading and using reusable AI agent skills.
+<p align="center">
+  <a href="https://github.com/joshuadavidthomas/opencode-agent-skills/actions/workflows/release.yml"><img alt="release" src="https://img.shields.io/github/actions/workflow/status/joshuadavidthomas/opencode-agent-skills/release.yml?style=flat-square&logo=githubactions&label=release" /></a>
+  <a href="https://www.npmjs.com/package/opencode-agent-skills"><img alt="npm" src="https://img.shields.io/npm/v/opencode-agent-skills?style=flat-square&logo=npm" /></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/joshuadavidthomas/opencode-agent-skills?style=flat-square" /></a>
+</p>
 
-> [!NOTE]
-> OpenCode now includes first-party support for agent skills, including native skill discovery and a built-in `skill` tool. For most users, this plugin is no longer necessary. It remains available in maintenance mode for users who depend on its extra behavior, such as automatic semantic skill matching, synthetic context injection, compaction reinjection, Superpowers bootstrapping, and helper tools for reading skill files or running skill scripts.
+<p align="center">OpenCode plugin for discovering reusable skills, loading skill instructions into context, reading skill files, and running skill scripts.</p>
+
+## Table of Contents
+
+- [Description](#description)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Description
+
+`opencode-agent-skills` adds four tools to OpenCode for working with skill folders:
+
+- `use_skill` loads a skill's `SKILL.md` into the conversation.
+- `read_skill_file` reads supporting files from a skill directory and injects them into context.
+- `run_skill_script` runs an executable script from a skill directory with that skill as the working directory.
+- `get_available_skills` lists discovered skills and supports optional filtering.
+
+It also re-injects skill context after session compaction and can bootstrap the `using-superpowers` skill when enabled.
 
 ## Features
 
-- **Dynamic skill discovery** - Automatically finds skills from project, user, and plugin directories
-- **Context injection** - Loads skill content directly into the conversation context
-- **Compaction resilient** - Skills survive context compaction in long sessions
-- **Claude Code compatible** - Works with existing Claude Code skills and plugins
-- **Optional Superpowers integration** - Drop-in support for the [Superpowers](https://github.com/obra/superpowers) workflow
-
-## Requirements
-
-- [OpenCode](https://opencode.ai/) v1.0.110 or later
+- Discovers skills from project and user locations in both OpenCode and Claude layouts.
+- Loads `SKILL.md` content into context with synthetic message injection.
+- Reads supporting docs, configs, and examples from a skill directory.
+- Executes executable scripts shipped with a skill.
+- Keeps loaded skills available across session compaction.
+- Supports optional Superpowers bootstrap via `OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true`.
 
 ## Installation
 
-If you only need standard skill loading, prefer OpenCode's built-in skills support. Install this plugin only if you need one of its additional behaviors.
+### OpenCode plugin
 
-Add to your OpenCode config (`~/.config/opencode/opencode.json`):
+Add the plugin to your OpenCode config at `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -29,9 +50,7 @@ Add to your OpenCode config (`~/.config/opencode/opencode.json`):
 }
 ```
 
-Restart OpenCode and you're ready to go.
-
-Optionally, pin to a specific version for stability:
+To pin a version, use:
 
 ```json
 {
@@ -39,159 +58,69 @@ Optionally, pin to a specific version for stability:
 }
 ```
 
-OpenCode fetches unpinned plugins from npm on each startup; pinned versions are cached and require a manual version bump to update.
+Restart OpenCode after updating the config.
 
-### Local Development
-
-If you want to customize or contribute:
+### Local development
 
 ```bash
 git clone https://github.com/joshuadavidthomas/opencode-agent-skills ~/.config/opencode/opencode-agent-skills
-npm install
-mkdir -p ~/.config/opencode/plugin
-ln -sf ~/.config/opencode/opencode-agent-skills/src/plugin.ts ~/.config/opencode/plugin/skills.ts
-```
-
-### Testing
-
-Run the layers separately:
-
-```bash
-npm run test:unit
-npm run test:integration
-npm run test:e2e
-```
-
-Or run the full suite:
-
-```bash
-npm test
-```
-
-## Usage
-
-This plugin provides 4 tools to OpenCode:
-
-| Tool | Description |
-|------|-------------|
-| `use_skill` | Load a skill's SKILL.md into context |
-| `read_skill_file` | Read supporting files from a skill directory |
-| `run_skill_script` | Execute scripts from a skill directory |
-| `get_available_skills` | Get available skills |
-
-### Skill Discovery
-
-Skills are discovered from multiple locations in priority order. The first skill found with a given name wins -- there is no duplication or shadowing. This allows project-level skills to override user-level skills of the same name.
-
-1. `.opencode/skills/` (project)
-2. `.claude/skills/` (project, Claude compatibility)
-3. `~/.config/opencode/skills/` (user)
-4. `~/.claude/skills/` (user, Claude compatibility)
-5. `~/.claude/plugins/cache/` (cached Claude plugins)
-6. `~/.claude/plugins/marketplaces/` (installed Claude plugins)
-
-### Writing Skills
-
-Skills follow the [Anthropic Agent Skills Spec](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview#skill-structure). Each skill is a directory containing a `SKILL.md` with YAML frontmatter:
-
-```markdown
----
-name: my-skill
-description: A brief description of what this skill does
----
-
-# My Skill
-
-Instructions for the AI agent...
-```
-
-See the [Anthropic Agent Skills documentation](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) for more details.
-
-## Troubleshooting
-
-If Hugging Face downloads are blocked or slow from your network, point Transformers.js at a compatible mirror:
-
-```bash
-HF_ENDPOINT=https://hf-mirror.com opencode
-```
-
-## Alternatives
-
-- OpenCode's built-in skills support - Native skill discovery and loading through the built-in `skill` tool
-- [superpowers](https://github.com/obra/superpowers) - A complete software development workflow built on composable skills
-- [skillz](https://github.com/intellectronica/skillz) - An MCP server that exposes skills as tools to any MCP client
-
-## Contributing
-
-This project is in maintenance mode. Bug fixes and small, clean improvements are welcome, but new features should generally be weighed against OpenCode's native skills support first.
-
-Here's how to set up for development:
-
-```bash
-git clone https://github.com/joshuadavidthomas/opencode-agent-skills
-cd opencode-agent-skills
+cd ~/.config/opencode/opencode-agent-skills
 bun install
-```
-
-Then symlink the plugin to your OpenCode config:
-
-```bash
+bun run build
 mkdir -p ~/.config/opencode/plugin
 ln -sf "$(pwd)/src/plugin.ts" ~/.config/opencode/plugin/skills.ts
 ```
 
-## How it works
+## Usage
 
-### Synthetic Message Injection
+The plugin discovers skills from these locations, in priority order:
 
-When you load a skill with `use_skill`, the content is injected into the conversation using OpenCode's SDK with two key flags:
+1. `.opencode/skills/`
+2. `.claude/skills/`
+3. `~/.config/opencode/skills/`
+4. `~/.claude/skills/`
 
-- `noReply: true` - The agent doesn't respond to the injection itself
-- `synthetic: true` - Marks the message as system-generated (hidden from UI, not counted as user input)
+Once loaded, use the tools directly from OpenCode:
 
-This means skills become part of the persistent conversation context and remain available even as the session grows and OpenCode compacts older messages.
+| Tool | What it does |
+|------|--------------|
+| `use_skill` | Load a skill's `SKILL.md` into context |
+| `read_skill_file` | Read a file from a skill directory |
+| `run_skill_script` | Execute a script from a skill directory |
+| `get_available_skills` | List available skills, optionally filtered by query |
 
-### Session Initialization
+If `using-superpowers` is available and `OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true`, the plugin injects the Superpowers bootstrap prompt automatically.
 
-On session start, the plugin automatically injects a list of all discovered skills wrapped in `<available-skills>` tags. This allows the agent to know what skills are available without needing to call `get_available_skills` first.
+## Examples
 
-### Automatic Skill Matching
+Load a skill into context:
 
-After the initial skills list is injected, the plugin monitors subsequent messages and uses semantic similarity to detect when a message relates to an available skill. When matches are found, it injects a prompt encouraging the agent to evaluate and load the relevant skills.
-
-This happens automatically - you don't need to remember skill names or explicitly request them.
-
-### Superpowers Mode (optional)
-
-To get the strict Superpowers prompt, install the real Superpowers project (follow [their instructions](https://github.com/obra/superpowers)). We automatically pick up the `using-superpowers` skill from either of its supported homes:
-
-- Installed as a Claude Code plugin (skills live under `.claude/plugins/…`)
-- Installed as the Superpowers OpenCode plugin (skills live under `.opencode/skills/…`)
-
-Once Superpowers is installed, enable superpowers mode via environment variable:
-
-```bash
-OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true opencode
+```text
+use_skill("brainstorming")
 ```
 
-Or export it in your shell profile for persistent use:
+Read a supporting file from a skill:
 
-```bash
-export OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true
+```text
+read_skill_file("brainstorming", "references/transformation-rules.md")
 ```
 
-The plugin will inject the full prompt when a session starts and a compact reminder after compaction.
+Run a script from a skill directory:
 
-### Compaction Resilience
+```text
+run_skill_script("my-skill", "scripts/build.sh", ["--dry-run"])
+```
 
-The plugin listens for `session.compacted` events and re-injects the available skills list. This ensures the agent maintains access to skills throughout long sessions.
+List matching skills:
+
+```text
+get_available_skills({ query: "read" })
+```
+
+## Contributing
+
+Contributions are welcome. Please run `bun run typecheck` and `bun run test` before opening a pull request.
 
 ## License
 
-opencode-agent-skills is licensed under the MIT license. See the [`LICENSE`](LICENSE) file for more information.
-
----
-
-opencode-agent-skills is not built by, or affiliated with, the OpenCode team.
-
-OpenCode is ©2025 Anomaly.
+MIT. See the [LICENSE](LICENSE) file for details.
