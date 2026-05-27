@@ -13,18 +13,18 @@ fmt:
 build:
     npm run build
 
-# Install dev plugin globally
+# Install dev plugin locally (project-scoped copy)
 install: build
-    mkdir -p ~/.config/opencode/plugin
-    ln -sf "$(pwd)/dist/plugin.js" ~/.config/opencode/plugin/skills.js
+    mkdir -p .opencode/plugins
+    cp dist/plugin.js .opencode/plugins/skills.js
 
-# Uninstall plugin
+# Uninstall local plugin copy
 uninstall:
-    rm -f ~/.config/opencode/plugin/skills.js
+    rm -f .opencode/plugins/skills.js
 
-# Check if plugin is installed
+# Check if local plugin is installed
 status:
-    @ls -la ~/.config/opencode/plugin/skills.js 2>/dev/null || echo "Not installed"
+    @ls -la .opencode/plugins/skills.js 2>/dev/null || echo "Not installed"
 
 # Run tests
 test:

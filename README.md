@@ -47,8 +47,25 @@ If you want to customize or contribute:
 
 ```bash
 git clone https://github.com/joshuadavidthomas/opencode-agent-skills ~/.config/opencode/opencode-agent-skills
+npm install
 mkdir -p ~/.config/opencode/plugin
 ln -sf ~/.config/opencode/opencode-agent-skills/src/plugin.ts ~/.config/opencode/plugin/skills.ts
+```
+
+### Testing
+
+Run the layers separately:
+
+```bash
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+```
+
+Or run the full suite:
+
+```bash
+npm test
 ```
 
 ## Usage

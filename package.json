@@ -22,7 +22,10 @@
   ],
   "scripts": {
     "build": "rolldown -c",
-    "test": "node --import tsx --test src/*.test.ts",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:unit": "node --import tsx --test src/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
+    "test:e2e": "node --import tsx --test tests/e2e/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
