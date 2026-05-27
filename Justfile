@@ -11,21 +11,21 @@ fmt:
 
 # Build the plugin
 build:
-    bun build src/plugin.ts --target=bun --outfile=dist/skills-plugin.ts --external=@opencode-ai/plugin
+    npm run build
 
 # Install dev plugin globally
 install: build
     mkdir -p ~/.config/opencode/plugin
-    ln -sf "$(pwd)/dist/skills-plugin.ts" ~/.config/opencode/plugin/skills.ts
+    ln -sf "$(pwd)/dist/plugin.js" ~/.config/opencode/plugin/skills.js
 
 # Uninstall plugin
 uninstall:
-    rm -f ~/.config/opencode/plugin/skills.ts
+    rm -f ~/.config/opencode/plugin/skills.js
 
 # Check if plugin is installed
 status:
-    @ls -la ~/.config/opencode/plugin/skills.ts 2>/dev/null || echo "Not installed"
+    @ls -la ~/.config/opencode/plugin/skills.js 2>/dev/null || echo "Not installed"
 
 # Run tests
 test:
-    bun test
+    npm test

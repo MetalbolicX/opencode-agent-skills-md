@@ -1,14 +1,11 @@
 /**
- * OpenCode Agent Skills Plugin
+ * OpenCode Agent Skills Plugin (Node.js/Lightweight version)
  *
  * A dynamic skills system that provides 4 tools:
  * - use_skill: Load a skill's SKILL.md into context
  * - read_skill_file: Read supporting files from a skill directory
  * - run_skill_script: Execute scripts from a skill directory
  * - get_available_skills: Get available skills
- *
- * Skills are discovered from multiple locations (project > user > marketplace)
- * and validated against the Anthropic Agent Skills Spec.
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -18,9 +15,8 @@ import {
   injectSyntheticContent,
   type SessionContext,
 } from "./utils";
-import { injectSkillsList, getSkillSummaries } from "./skills";
+import { injectSkillsList, getSkillSummaries, type SkillSummary } from "./skills";
 import { GetAvailableSkills, ReadSkillFile, RunSkillScript, UseSkill } from "./tools";
-import { matchSkills, precomputeSkillEmbeddings } from "./embeddings";
 
 const setupCompleteSessions = new Set<string>();
 const loadedSkillsPerSession = new Map<string, Set<string>>();
@@ -56,14 +52,34 @@ IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. 
 </skill-evaluation-required>`;
 }
 
-export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
-  const skills = await getSkillSummaries(directory);
-  precomputeSkillEmbeddings(skills).catch(err => {
-    console.error("Failed to pre-compute skill embeddings:", err);
+// Lightweight keyword matching to replace ML embeddings
+function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] {
+  const tokens = userMessage.toLowerCase().split(/\\W+/).filter(t => t.length > 2);
+  if (tokens.length === 0) return [];
+
+  const scored = availableSkills.map(skill => {
+    let score = 0;
+    const nameStr = skill.name.toLowerCase();
+    const descStr = skill.description.toLowerCase();
+    
+    for (const token of tokens) {
+      if (nameStr.includes(token)) score += 2;
+      if (descStr.includes(token)) score += 1;
+    }
+    return { skill, score };
   });
 
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map(s => s.skill);
+}
+
+// Synchronous factory to prevent any blocking during startup
+export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
   return {
-    "chat.message": async (input, output) => {
+    "chat.message": async (input: any, output: any) => {
       const sessionID = output.message.sessionID;
       const isFirstMessage = !setupCompleteSessions.has(sessionID);
 
@@ -105,7 +121,7 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
       }
 
       const userText = output.parts
-        .flatMap(part =>
+        .flatMap((part: any) =>
           part.type === "text" && typeof part.text === "string" && !part.synthetic
             ? [part.text]
             : []
@@ -122,7 +138,7 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
         return;
       }
 
-      const matchedSkills = await matchSkills(userText, skills);
+      const matchedSkills = matchSkillsByKeyword(userText, skills);
 
       const loadedSkills = getLoadedSkills(sessionID);
       const newSkills = matchedSkills.filter(s => !loadedSkills.has(s.name));
@@ -141,7 +157,7 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
       await injectSyntheticContent(client, sessionID, injectionText, context);
     },
 
-    event: async ({ event }) => {
+    event: async ({ event }: { event: any }) => {
       if (event.type === "session.compacted") {
         const sessionID = event.properties.sessionID;
         const context = await getSessionContext(client, sessionID);
