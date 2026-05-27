@@ -148,3 +148,4 @@ dist
 
 !CLAUDE.md
 .debug/
+.atl/
