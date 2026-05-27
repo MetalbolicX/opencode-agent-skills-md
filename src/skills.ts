@@ -1,7 +1,7 @@
 /**
  * Core skill discovery and management logic.
  *
- * Handles skill discovery from multiple locations (project > user > marketplace),
+ * Handles skill discovery from locations (project > user),
  * validation against the Anthropic Agent Skills Spec, and skill resolution.
  */
 
@@ -17,7 +17,6 @@ import {
   type OpencodeClient,
   type SessionContext,
 } from "./utils";
-import { discoverMarketplaceSkills, discoverPluginCacheSkills } from "./claude";
 
 /**
  * Skill label indicating the source/location of a skill.
@@ -25,9 +24,8 @@ import { discoverMarketplaceSkills, discoverPluginCacheSkills } from "./claude";
  * - user: ~/.config/opencode/skills/
  * - claude-project: .claude/skills/ in project directory
  * - claude-user: ~/.claude/skills/
- * - claude-plugins: ~/.claude/plugins/ (cache or marketplace)
  */
-export type SkillLabel = "project" | "user" | "claude-project" | "claude-user" | "claude-plugins";
+export type SkillLabel = "project" | "user" | "claude-project" | "claude-user";
 
 /**
  * Script metadata with both relative and absolute paths.
@@ -232,8 +230,6 @@ interface DiscoveryPath {
  * 2. .claude/skills/                   (project - Claude)
  * 3. ~/.config/opencode/skills/        (user - OpenCode)
  * 4. ~/.claude/skills/                 (user - Claude)
- * 5. ~/.claude/plugins/cache/          (cached plugin skills)
- * 6. ~/.claude/plugins/marketplaces/   (installed plugins)
  *
  * No shadowing - unique names only. First match wins, duplicates are warned.
  */
@@ -249,8 +245,6 @@ export async function discoverAllSkills(directory: string): Promise<Map<string, 
   for (const { path: baseDir, label, maxDepth } of discoveryPaths) {
     allResults.push(...await findSkillsRecursive(baseDir, label, maxDepth));
   }
-  allResults.push(...await discoverPluginCacheSkills());
-  allResults.push(...await discoverMarketplaceSkills());
 
   const skillsByName = new Map<string, Skill>();
   for (const { filePath, relativePath, label } of allResults) {

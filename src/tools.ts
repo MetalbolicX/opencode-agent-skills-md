@@ -12,7 +12,18 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { toolTranslation } from "./claude";
+/**
+ * Tool translation guide for skills written for Claude Code.
+ * Injected into skill content to help the AI use OpenCode equivalents.
+ */
+export const toolTranslation = `<tool-translation>
+This skill may reference Claude Code tools. Use OpenCode equivalents:
+- TodoWrite/TodoRead -> todowrite/todoread
+- Task (subagents) -> task tool with subagent_type parameter
+- Skill tool -> use_skill tool
+- Read/Write/Edit/Bash/Glob/Grep/WebFetch -> lowercase (read/write/edit/bash/glob/grep/webfetch)
+</tool-translation>`;
+
 import {
   getSessionContext,
   injectSyntheticContent,
