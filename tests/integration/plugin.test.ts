@@ -27,7 +27,7 @@ describe("plugin integration", () => {
   });
 
   test("discovers project and user skills deterministically", async () => {
-    const { discoverAllSkills } = await import("../../src/skills");
+    const { discoverAllSkills } = await import("../../src/core");
 
     const skills = await discoverAllSkills(workspace.projectRoot);
 
@@ -38,7 +38,7 @@ describe("plugin integration", () => {
   });
 
   test("loads startup context, tools, and reinjection hooks", async () => {
-    const { SkillsPlugin } = await import("../../src/plugin");
+    const { SkillsPlugin } = await import("../../src/opencode");
 
     const client = createMockOpencodeClient();
     const shell = createShellRecorder();
@@ -78,7 +78,7 @@ describe("plugin integration", () => {
   });
 
   test("skill tools load content and execute scripts", async () => {
-    const { SkillsPlugin } = await import("../../src/plugin");
+    const { SkillsPlugin } = await import("../../src/opencode");
 
     const client = createMockOpencodeClient();
     const shell = createShellRecorder();

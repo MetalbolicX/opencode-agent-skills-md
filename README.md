@@ -69,8 +69,32 @@ cd ~/.config/opencode/opencode-agent-skills
 pnpm install
 pnpm run build
 mkdir -p ~/.config/opencode/plugin
-ln -sf "$(pwd)/src/plugin.ts" ~/.config/opencode/plugin/skills.ts
+ln -sf "$(pwd)/dist/opencode/index.js" ~/.config/opencode/plugin/skills.ts
 ```
+
+### Programmatic subpath exports
+
+The package publishes two ESM subpath exports so harness authors can embed the portable engine without pulling the OpenCode SDK:
+
+| Subpath | Resolves to | Intended for |
+|---------|-------------|--------------|
+| `opencode-agent-skills` | `./dist/opencode/index.js` | OpenCode host adapter (default `SkillsPlugin` factory + `createOpencodeSkillHost`) |
+| `opencode-agent-skills/core` | `./dist/core/index.js` | Portable engine: `discoverAllSkills`, `parseSkillFile`, `resolveSkill`, `SkillHostClient`, `SkillHostSession`, etc. |
+
+The core subpath has zero runtime dependency on `@opencode-ai/plugin` and is the right entry point for custom harnesses, CLIs, and test fixtures. Example:
+
+```ts
+import {
+  discoverAllSkills,
+  parseSkillFile,
+  resolveSkill,
+  type Skill,
+  type SkillHostClient,
+  type SkillHostSession,
+} from "opencode-agent-skills/core";
+```
+
+To reuse the core from a new harness, implement the two interfaces (`SkillHostClient`, `SkillHostSession`) declared in `src/core/types.ts` and pass an instance to the tool factories of your choice.
 
 ## Usage
 

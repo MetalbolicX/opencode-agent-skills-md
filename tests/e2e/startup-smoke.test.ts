@@ -29,7 +29,7 @@ describe("plugin startup smoke", () => {
   });
 
   test("imports the built plugin and completes a first message", async () => {
-    const module = await import("../../dist/plugin.js");
+    const module = await import("../../dist/opencode/index.js");
     const SkillsPlugin = module.SkillsPlugin as (input: any) => Promise<any>;
 
     const prompts: Array<{ text: string }> = [];

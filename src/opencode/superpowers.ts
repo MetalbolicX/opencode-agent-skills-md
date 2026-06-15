@@ -1,13 +1,15 @@
 /**
- * Superpowers bootstrap logic for OpenCode Agent Skills
+ * Superpowers bootstrap for the OpenCode host.
  *
  * Provides automatic injection of the "using-superpowers" skill content
- * when OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true environment variable is set.
+ * when OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true. Consumes the host's
+ * bounded client surface for content injection and the portable core for
+ * skill discovery.
  */
 
-import type { OpencodeClient, SessionContext } from "./utils";
-import { injectSyntheticContent, getSessionContext } from "./utils";
-import { discoverAllSkills } from "./skills";
+import { discoverAllSkills } from "../core";
+import type { OpencodeSkillHost } from "./host";
+import type { SkillHostContext } from "../core";
 
 const toolMapping = `**Tool Mapping for OpenCode:**
 - \`TodoWrite\` → \`todowrite\`
@@ -28,12 +30,12 @@ The first discovered match wins.`;
  * Maybe inject superpowers bootstrap content into a session.
  * Only injects if superpowers mode is enabled and using-superpowers skill exists.
  */
-export const maybeInjectSuperpowersBootstrap = async (
+export async function maybeInjectSuperpowersBootstrap(
   directory: string,
-  client: OpencodeClient,
+  host: OpencodeSkillHost,
   sessionID: string,
-  context?: SessionContext
-) => {
+  context?: SkillHostContext
+): Promise<void> {
   const superpowersModeEnabled = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE === 'true';
   if (!superpowersModeEnabled) return;
 
@@ -53,6 +55,6 @@ ${toolMapping}
 ${skillsNamespace}
 </EXTREMELY_IMPORTANT>`;
 
-  const ctx = context ?? await getSessionContext(client, sessionID);
-  await injectSyntheticContent(client, sessionID, content, ctx);
-};
+  const ctx = context ?? await host.client.getSessionContext(sessionID);
+  await host.client.injectContent(sessionID, content, ctx);
+}
