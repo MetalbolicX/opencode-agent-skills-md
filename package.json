@@ -15,15 +15,30 @@
         "agent",
         "ai"
     ],
-    "main": "dist/plugin.mjs",
+    "main": "dist/opencode/index.js",
     "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/opencode/index.d.ts",
+            "import": "./dist/opencode/index.js",
+            "default": "./dist/opencode/index.js"
+        },
+        "./core": {
+            "types": "./dist/core/index.d.ts",
+            "import": "./dist/core/index.js",
+            "default": "./dist/core/index.js"
+        }
+    },
     "files": [
         "dist"
     ],
     "scripts": {
-        "build": "rolldown -c",
-        "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+        "build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json",
+        "pretest": "npm run build",
+        "test": "npm run test:unit && npm run test:core && npm run test:opencode && npm run test:integration && npm run test:e2e",
         "test:unit": "node --import tsx --test src/*.test.ts",
+        "test:core": "node --import tsx --test tests/core/*.test.ts",
+        "test:opencode": "node --import tsx --test tests/opencode/*.test.ts",
         "test:integration": "node --import tsx --test tests/integration/*.test.ts",
         "test:e2e": "node --import tsx --test tests/e2e/*.test.ts",
         "typecheck": "tsc --noEmit"
@@ -37,6 +52,7 @@
         "@rollup/plugin-typescript": "^12.3.0",
         "@types/node": "^25.9.1",
         "rolldown": "^1.0.3",
+        "tslib": "^2.8.1",
         "tsx": "^4.22.3",
         "typescript": "^6.0.3"
     },

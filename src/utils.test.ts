@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { levenshtein, findClosestMatch } from "./utils";
+import { levenshtein, findClosestMatch } from "./core/match";
 
 describe("levenshtein", () => {
   test("identical strings have distance 0", () => {

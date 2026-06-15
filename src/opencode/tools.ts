@@ -1,17 +1,40 @@
 /**
- * OpenCode Agent Skills - Tool Definitions
+ * OpenCode tool factories.
  *
- * Factory functions that create the 4 skill tools with injected dependencies:
- * - GetAvailableSkills: Get available skills with optional filtering
- * - ReadSkillFile: Read supporting files from skill directories
- * - RunSkillScript: Execute scripts from skill directories
- * - UseSkill: Load a skill's SKILL.md into context
+ * The four skill tools (get_available_skills, read_skill_file, run_skill_script,
+ * use_skill) compose the portable core engine with the OpenCode host. Tools
+ * consume the host's bounded client surface; they never reference the
+ * OpenCode SDK client or the `node:fs` module directly.
+ *
+ * `createSkillTools(host, $, directory)` returns the four tool factories
+ * pre-bound to the host, the shell runner, and the project directory. The
+ * plugin instantiates them at registration time.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  discoverAllSkills,
+  findClosestMatch,
+  isPathSafe,
+  listSkillFiles,
+  resolveSkill,
+} from "../core";
+import type { OpencodeSkillHost } from "./host";
+
+/**
+ * Portable return type for tool factory consts.
+ *
+ * The `tool()` helper captures the Zod shape of its `args` parameter in the
+ * generic parameter, so the inferred return type of each factory leaks Zod
+ * types. When TypeScript emits `.d.ts` files for the package, that generic
+ * instantiation cannot be named portably across zod versions. Annotating
+ * the return type as `ReturnType<typeof tool>` erases the per-call Zod
+ * shape and leaves a stable, portable declaration for downstream consumers.
+ */
+type SkillTool = ReturnType<typeof tool>;
+
 /**
  * Tool translation guide for skills written for Claude Code.
  * Injected into skill content to help the AI use OpenCode equivalents.
@@ -24,20 +47,32 @@ This skill may reference Claude Code tools. Use OpenCode equivalents:
 - Read/Write/Edit/Bash/Glob/Grep/WebFetch -> lowercase (read/write/edit/bash/glob/grep/webfetch)
 </tool-translation>`;
 
-import {
-  getSessionContext,
-  injectSyntheticContent,
-  findClosestMatch,
-  isPathSafe,
-  type OpencodeClient,
-} from "./utils";
-import {
-  discoverAllSkills,
-  resolveSkill,
-  listSkillFiles,
-} from "./skills";
+export interface SkillTools {
+  GetAvailableSkills: ReturnType<typeof GetAvailableSkills>;
+  ReadSkillFile: ReturnType<typeof ReadSkillFile>;
+  RunSkillScript: ReturnType<typeof RunSkillScript>;
+  UseSkill: ReturnType<typeof UseSkill>;
+}
 
-export const GetAvailableSkills = (directory: string) => {
+/**
+ * Build the four skill tool factories bound to the host, shell, and
+ * project directory. The returned object is what the plugin registers
+ * under its `tool` hook.
+ */
+export function createSkillTools(
+  host: OpencodeSkillHost,
+  $: PluginInput["$"],
+  directory: string
+): SkillTools {
+  return {
+    GetAvailableSkills: GetAvailableSkills(directory),
+    ReadSkillFile: ReadSkillFile(directory, host),
+    RunSkillScript: RunSkillScript(directory, $),
+    UseSkill: UseSkill(directory, host),
+  };
+}
+
+const GetAvailableSkills = (directory: string): SkillTool => {
   return tool({
     description: "Get available skills with their descriptions. Optionally filter by query.",
     args: {
@@ -82,7 +117,7 @@ export const GetAvailableSkills = (directory: string) => {
   });
 };
 
-export const ReadSkillFile = (directory: string, client: OpencodeClient) => {
+const ReadSkillFile = (directory: string, host: OpencodeSkillHost): SkillTool => {
   return tool({
     description: "Read a supporting file from a skill's directory (docs, examples, configs).",
     args: {
@@ -116,7 +151,7 @@ export const ReadSkillFile = (directory: string, client: OpencodeClient) => {
       const filePath = path.join(skill.path, args.filename);
 
       try {
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await host.client.readFile(filePath);
 
         // Inject via noReply for context persistence
         const wrappedContent = `<skill-file skill="${skill.name}" file="${args.filename}">
@@ -129,13 +164,13 @@ ${content}
   </content>
 </skill-file>`;
 
-        const context = await getSessionContext(client, ctx.sessionID);
-        await injectSyntheticContent(client, ctx.sessionID, wrappedContent, context);
+        const context = await host.client.getSessionContext(ctx.sessionID);
+        await host.client.injectContent(ctx.sessionID, wrappedContent, context);
 
         return `File "${args.filename}" from skill "${skill.name}" loaded.`;
       } catch {
         try {
-          const files = await fs.readdir(skill.path);
+          const files = await host.client.readdir(skill.path);
           return `File "${args.filename}" not found. Available files: ${files.join(', ')}`;
         } catch {
           return `File "${args.filename}" not found in skill "${skill.name}".`;
@@ -145,7 +180,7 @@ ${content}
   });
 };
 
-export const RunSkillScript = (directory: string, $: PluginInput["$"]) => {
+const RunSkillScript = (directory: string, $: PluginInput["$"]): SkillTool => {
   return tool({
     description: "Execute a script from a skill's directory. Scripts are run with the skill directory as CWD.",
     args: {
@@ -208,11 +243,11 @@ export const RunSkillScript = (directory: string, $: PluginInput["$"]) => {
   });
 };
 
-export const UseSkill = (
+const UseSkill = (
   directory: string,
-  client: OpencodeClient,
+  host: OpencodeSkillHost,
   onSkillLoaded?: (sessionID: string, skillName: string) => void
-) => {
+): SkillTool => {
   return tool({
     description: "Load a skill's SKILL.md content into context. Skills contain proven workflows, techniques, and patterns.",
     args: {
@@ -259,8 +294,8 @@ ${skill.template}
   </content>
 </skill>`;
 
-      const context = await getSessionContext(client, ctx.sessionID);
-      await injectSyntheticContent(client, ctx.sessionID, skillContent, context);
+      const context = await host.client.getSessionContext(ctx.sessionID);
+      await host.client.injectContent(ctx.sessionID, skillContent, context);
 
       onSkillLoaded?.(ctx.sessionID, skill.name);
 

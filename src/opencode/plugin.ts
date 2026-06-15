@@ -1,22 +1,24 @@
 /**
- * OpenCode Agent Skills Plugin (Node.js/Lightweight version)
+ * OpenCode Agent Skills Plugin (host adapter).
  *
- * A dynamic skills system that provides 4 tools:
- * - use_skill: Load a skill's SKILL.md into context
- * - read_skill_file: Read supporting files from a skill directory
- * - run_skill_script: Execute scripts from a skill directory
- * - get_available_skills: Get available skills
+ * The plugin factory builds the host over the OpenCode SDK client, composes
+ * the four skill tools, and wires the chat.message and event hooks. The
+ * keyword matcher and session/loaded-skill bookkeeping are the only
+ * adapter-specific logic; everything else delegates to the portable core
+ * or the host.
+ *
+ * Public surface (re-exported by `src/opencode/index.ts` and the root
+ * `src/plugin.ts` shim):
+ *   - SkillsPlugin: the PluginInput-bound async factory
  */
 
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
+import { getSkillSummaries, type SkillSummary } from "../core";
+import type { SkillHostContext } from "../core";
+import { createOpencodeSkillHost } from "./host";
+import { injectSkillsList } from "./skills";
 import { maybeInjectSuperpowersBootstrap } from "./superpowers";
-import {
-  getSessionContext,
-  injectSyntheticContent,
-  type SessionContext,
-} from "./utils";
-import { injectSkillsList, getSkillSummaries, type SkillSummary } from "./skills";
-import { GetAvailableSkills, ReadSkillFile, RunSkillScript, UseSkill } from "./tools";
+import { createSkillTools } from "./tools";
 
 const setupCompleteSessions = new Set<string>();
 const loadedSkillsPerSession = new Map<string, Set<string>>();
@@ -54,14 +56,14 @@ IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. 
 
 // Lightweight keyword matching to replace ML embeddings
 function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] {
-  const tokens = userMessage.toLowerCase().split(/\\W+/).filter(t => t.length > 2);
+  const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
   if (tokens.length === 0) return [];
 
   const scored = availableSkills.map(skill => {
     let score = 0;
     const nameStr = skill.name.toLowerCase();
     const descStr = skill.description.toLowerCase();
-    
+
     for (const token of tokens) {
       if (nameStr.includes(token)) score += 2;
       if (descStr.includes(token)) score += 1;
@@ -77,7 +79,14 @@ function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary
 }
 
 // Synchronous factory to prevent any blocking during startup
-export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
+export const SkillsPlugin: Plugin = async ({
+  client,
+  $,
+  directory,
+}: PluginInput) => {
+  const host = createOpencodeSkillHost(client);
+  const tools = createSkillTools(host, $, directory);
+
   return {
     "chat.message": async (input: any, output: any) => {
       const sessionID = output.message.sessionID;
@@ -109,13 +118,13 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
       if (!setupCompleteSessions.has(sessionID)) {
         setupCompleteSessions.add(sessionID);
 
-        const context: SessionContext = {
+        const context: SkillHostContext = {
           model: output.message.model,
           agent: output.message.agent,
         };
 
-        await maybeInjectSuperpowersBootstrap(directory, client, sessionID, context);
-        await injectSkillsList(directory, client, sessionID, context);
+        await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context);
+        await injectSkillsList(directory, host, sessionID, context);
 
         return;
       }
@@ -149,20 +158,20 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
 
       const injectionText = formatMatchedSkillsInjection(newSkills);
 
-      const context: SessionContext = {
+      const context: SkillHostContext = {
         model: output.message.model,
         agent: output.message.agent,
       };
 
-      await injectSyntheticContent(client, sessionID, injectionText, context);
+      await host.client.injectContent(sessionID, injectionText, context);
     },
 
     event: async ({ event }: { event: any }) => {
       if (event.type === "session.compacted") {
         const sessionID = event.properties.sessionID;
-        const context = await getSessionContext(client, sessionID);
-        await maybeInjectSuperpowersBootstrap(directory, client, sessionID, context);
-        await injectSkillsList(directory, client, sessionID, context);
+        const context = await host.client.getSessionContext(sessionID);
+        await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context);
+        await injectSkillsList(directory, host, sessionID, context);
         loadedSkillsPerSession.delete(sessionID);
       }
 
@@ -174,12 +183,10 @@ export const SkillsPlugin: Plugin = async ({ client, $, directory }) => {
     },
 
     tool: {
-      get_available_skills: GetAvailableSkills(directory),
-      read_skill_file: ReadSkillFile(directory, client),
-      run_skill_script: RunSkillScript(directory, $),
-      use_skill: UseSkill(directory, client, (sessionID, skillName) => {
-        getLoadedSkills(sessionID).add(skillName);
-      }),
+      get_available_skills: tools.GetAvailableSkills,
+      read_skill_file: tools.ReadSkillFile,
+      run_skill_script: tools.RunSkillScript,
+      use_skill: tools.UseSkill,
     },
   };
 };
