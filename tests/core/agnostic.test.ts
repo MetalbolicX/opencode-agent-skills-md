@@ -330,8 +330,13 @@ describe("agnostic core", () => {
 
     try {
       const duplicateSpy = mock.fn((_existing: unknown, _dup: unknown) => {});
+      // Pin roots to a single project root so the user's real HOME does not
+      // create an unintended duplicate that would taint the assertion.
+      const roots = [
+        { path: path.join(rootDir, ".opencode", "skills"), label: "project" as const, maxDepth: 3 },
+      ];
       const { discoverAllSkills } = await import("../../src/core/index.ts");
-      await discoverAllSkills(rootDir, undefined, duplicateSpy);
+      await discoverAllSkills(rootDir, roots, duplicateSpy);
 
       assert.equal(duplicateSpy.mock.calls.length, 0);
     } finally {

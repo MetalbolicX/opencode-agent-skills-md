@@ -119,16 +119,37 @@ export function getDefaultOpencodeRoots(directory: string): DiscoveryPath[] {
 }
 
 /**
+ * Default callback for shadowed skill names. Emits a `console.warn` that
+ * identifies the surviving (existing) skill and the duplicate that was
+ * skipped. Hosts can override by passing `onDuplicate` to `discoverAllSkills`.
+ *
+ * @internal - exported for testing
+ */
+export const defaultOnDuplicate = (
+  existing: Skill,
+  duplicate: Skill
+): void => {
+  console.warn(
+    `Skill name conflict: '${existing.name}' at ${existing.path} shadows duplicate at ${duplicate.path}`
+  );
+};
+
+/**
  * Discover all skills from the provided roots.
  *
  * @param directory - Project directory (used to build the default roots).
  * @param roots - Discovery roots. Defaults to the OpenCode priority order
  *   via `getDefaultOpencodeRoots(directory)`. Hosts pass an explicit list to
  *   override the layout.
+ * @param onDuplicate - Optional callback invoked when two roots produce a
+ *   skill with the same `name`. Defaults to `console.warn` via
+ *   `defaultOnDuplicate`. The first-discovered skill wins; the duplicate
+ *   (second one encountered) is passed to the callback but never stored.
  */
 export async function discoverAllSkills(
   directory: string,
-  roots: DiscoveryPath[] = getDefaultOpencodeRoots(directory)
+  roots: DiscoveryPath[] = getDefaultOpencodeRoots(directory),
+  onDuplicate: (existing: Skill, duplicate: Skill) => void = defaultOnDuplicate
 ): Promise<Map<string, Skill>> {
   const allResults: LabeledDiscoveryResult[] = [];
   for (const { path: baseDir, label, maxDepth } of roots) {
@@ -138,7 +159,11 @@ export async function discoverAllSkills(
   const skillsByName = new Map<string, Skill>();
   for (const { filePath, relativePath, label } of allResults) {
     const skill = await parseSkillFile(filePath, relativePath, label);
-    if (!skill || skillsByName.has(skill.name)) continue;
+    if (!skill) continue;
+    if (skillsByName.has(skill.name)) {
+      onDuplicate(skillsByName.get(skill.name)!, skill);
+      continue;
+    }
     skillsByName.set(skill.name, skill);
   }
 
