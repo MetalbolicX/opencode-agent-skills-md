@@ -44,6 +44,7 @@ export const SkillFrontmatterSchema = z.object({
     .min(1, { message: "Name cannot be empty" }),
   description: z.string()
     .min(1, { message: "Description cannot be empty" }),
+  trigger: z.string().optional(),
   license: z.string().optional(),
   "allowed-tools": z.array(z.string()).optional(),
   metadata: z
@@ -105,6 +106,7 @@ export async function parseSkillFile(
   return {
     name: frontmatter.name,
     description: frontmatter.description,
+    trigger: frontmatter.trigger,
     path: skillDirPath,
     relativePath,
     namespace,

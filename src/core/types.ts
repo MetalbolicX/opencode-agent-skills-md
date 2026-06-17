@@ -41,6 +41,13 @@ export interface Script {
 export interface Skill {
   name: string;
   description: string;
+  /**
+   * Free-form trigger phrase(s) parsed from the `trigger` frontmatter key.
+   * Surfaced in targeted outputs (matched-skill injection, `get_available_skills`)
+   * so the model knows which user phrases should activate the skill. Absent
+   * when the frontmatter has no `trigger` key.
+   */
+  trigger?: string;
   path: string;
   relativePath: string;
   namespace?: string;
@@ -62,6 +69,11 @@ export interface Skill {
 export interface SkillSummary {
   name: string;
   description: string;
+  /**
+   * Optional trigger phrase(s) parsed from the `trigger` frontmatter key.
+   * Mirrors `Skill.trigger` so summaries carry the same discovery metadata.
+   */
+  trigger?: string;
 }
 
 /** Discovery result with label attached. */
