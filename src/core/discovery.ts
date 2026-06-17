@@ -101,13 +101,21 @@ export async function findSkillsRecursive(
 }
 
 /**
- * Default discovery roots matching the legacy OpenCode priority order:
- *   1. .opencode/skills/        (project - OpenCode)
- *   2. .claude/skills/          (project - Claude)
+ * Default discovery roots matching the pre-refactor OpenCode priority order
+ * (see commit `c2d8e74`, `src/skills.ts#discoverAllSkills`):
+ *   1. .opencode/skills/         (project - OpenCode)
+ *   2. .claude/skills/           (project - Claude)
  *   3. ~/.config/opencode/skills/ (user - OpenCode)
- *   4. ~/.claude/skills/        (user - Claude)
+ *   4. ~/.claude/skills/         (user - Claude)
  *
  * No shadowing - unique names only. First match wins, duplicates are warned.
+ *
+ * All four roots use `maxDepth: 3`. The pre-refactor baseline used
+ * `maxDepth: 1` for the Claude-side roots, but commit `12de52a`
+ * (fix(core): unify maxDepth to 3 across all discovery roots) widened
+ * them deliberately so deeply-nested Claude skills surface. The
+ * `tests/integration/skill-discovery.test.ts` regression net pins both
+ * the location set and this maxDepth unification.
  */
 export function getDefaultOpencodeRoots(directory: string): DiscoveryPath[] {
   return [
