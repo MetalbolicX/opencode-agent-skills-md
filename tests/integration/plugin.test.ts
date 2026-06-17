@@ -154,9 +154,10 @@ describe("plugin integration", () => {
       "use_skill injects the skill content into the session",
     );
 
-    // Subsequent chat.message with a keyword matching scripted-skill. The
-    // matcher should see scripted-skill as already loaded and skip the
-    // <skill-evaluation-required> injection.
+    // Subsequent chat.message with a keyword that also matches scripted-skill.
+    // Other skills may legitimately match too, but scripted-skill MUST be
+    // filtered out by the loaded-skill set after the fix. Before the fix,
+    // scripted-skill appears because loadedSkillsPerSession was never updated.
     const promptsBeforeRepeat = client.prompts.length;
     await plugin["chat.message"](
       {},
@@ -170,11 +171,16 @@ describe("plugin integration", () => {
       } as any,
     );
     const newPrompts = client.prompts.slice(promptsBeforeRepeat);
-    assert.equal(
-      newPrompts.filter((p) => /<skill-evaluation-required>/.test(p.text)).length,
-      0,
-      "loaded-skill state must suppress re-injection for scripted-skill",
+    const evaluationInjections = newPrompts.filter((p) =>
+      /<skill-evaluation-required>/.test(p.text),
     );
+    for (const prompt of evaluationInjections) {
+      assert.doesNotMatch(
+        prompt.text,
+        /^- scripted-skill:/m,
+        "loaded-skill state must suppress scripted-skill from re-injection",
+      );
+    }
   });
 });
 
