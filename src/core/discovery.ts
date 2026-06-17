@@ -43,6 +43,11 @@ export async function findFile(
 
 /**
  * Recursively find SKILL.md files in a directory.
+ *
+ * The base directory itself is checked first: a SKILL.md placed at the root
+ * of a discovery root is returned with `relativePath = ""` and wins the
+ * shadowing tie-break over same-name skills in subdirectories (first found
+ * wins in `discoverAllSkills`).
  */
 export async function findSkillsRecursive(
   baseDir: string,
@@ -83,6 +88,12 @@ export async function findSkillsRecursive(
 
   try {
     await fs.access(baseDir);
+    // Check the baseDir itself before recursing so a root-level SKILL.md is
+    // discovered and naturally wins the first-found-wins tie-break.
+    const rootFile = await findFile(baseDir, '', 'SKILL.md');
+    if (rootFile) {
+      results.push({ ...rootFile, label });
+    }
     await recurse(baseDir, 0, '');
   } catch { }
 
