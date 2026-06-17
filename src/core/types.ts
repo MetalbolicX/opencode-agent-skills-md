@@ -47,6 +47,13 @@ export interface Skill {
   label: SkillLabel;
   scripts: Script[];
   template: string;
+  /**
+   * Free-form tags parsed from `metadata.tags` in the skill frontmatter.
+   * Defaults to an empty array when the skill has no `metadata` block or
+   * the block has no `tags` key. Consumers (e.g. the search layer) use
+   * this list to filter skills by user-supplied keywords.
+   */
+  tags: string[];
 }
 
 /**
