@@ -113,7 +113,14 @@ export const SkillsPlugin: Plugin = async ({
   directory,
 }: PluginInput) => {
   const host = createOpencodeSkillHost(client);
-  const tools = createSkillTools(host, $, directory);
+  const tools = createSkillTools(
+    host,
+    $,
+    directory,
+    (sessionID, skillName) => {
+      getLoadedSkills(sessionID).add(skillName);
+    },
+  );
 
   return {
     "chat.message": async (input: any, output: any) => {
