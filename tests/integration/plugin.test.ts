@@ -173,15 +173,18 @@ describe("GetAvailableSkills with keywords", () => {
       directory: workspace.projectRoot,
     } as any);
 
-    // The current implementation crashes here because `new RegExp("(test+", "i")`
-    // throws — the unescaped `(` and `+` are invalid regex syntax.
+    // The legacy implementation crashed here because `new RegExp("(test+", "i")`
+    // throws — the unescaped `(` and `+` are invalid regex syntax. After
+    // the search-layer wiring, the tool must produce a string result
+    // (matches or a clean no-match) without throwing. The fuzzy scorer
+    // legitimately matches "go-tester" and "rust-tester" against the
+    // substring "test" inside the escaped token, so a non-empty result
+    // is expected and acceptable.
     const result = await plugin.tool.get_available_skills.execute(
       { query: "(test+" } as any,
       { sessionID: "regex-test" } as any
     );
 
     assert.ok(typeof result === "string", "returns a string result");
-    // No skill matches the literal "(test+", so we expect the no-match path.
-    assert.match(result, /no skills found/i);
   });
 });
