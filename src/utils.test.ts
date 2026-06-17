@@ -268,6 +268,59 @@ describe("scoreSkill", () => {
     assert.ok(sAllInDesc > 0, "all-tokens-in-description scores positive");
     assert.equal(sOnlyInName, 0, "AND fails when one token is missing from desc");
   });
+
+  // PR 2: trigger ranking tier. Weight 60 sits between the name fuzzy tier
+  // (70 * sim) and the description tier (30-50), so the invariant
+  //   name > trigger > description
+  // holds for any single-token query that does not exactly equal the name.
+  test("trigger-only match scores positive (R3)", async () => {
+    const { scoreSkill } = await loadSearchModule();
+    const skill = makeSkill({
+      name: "skill-x",
+      description: "unrelated description",
+      trigger: "oauth login",
+    });
+
+    const score = scoreSkill(skill, ["oauth"]);
+
+    assert.ok(score > 0, `trigger-only match should score positive, got ${score}`);
+  });
+
+  test("name exact beats trigger at the same query (R3 ordering)", async () => {
+    const { scoreSkill } = await loadSearchModule();
+    const nameExact = makeSkill({
+      name: "oauth",
+      description: "x",
+    });
+    const triggerOnly = makeSkill({
+      name: "skill-x",
+      description: "x",
+      trigger: "oauth login",
+    });
+
+    const sName = scoreSkill(nameExact, ["oauth"]);
+    const sTrigger = scoreSkill(triggerOnly, ["oauth"]);
+
+    assert.ok(sName > sTrigger, `name (${sName}) must beat trigger (${sTrigger})`);
+  });
+
+  test("trigger beats description at the same query (R3 ordering)", async () => {
+    const { scoreSkill } = await loadSearchModule();
+    const descOnly = makeSkill({
+      name: "skill-x",
+      description: "auth helper for tokens",
+    });
+    const triggerOnly = makeSkill({
+      name: "skill-y",
+      description: "unrelated",
+      trigger: "auth login",
+    });
+
+    const sDesc = scoreSkill(descOnly, ["auth"]);
+    const sTrigger = scoreSkill(triggerOnly, ["auth"]);
+
+    assert.ok(sTrigger > sDesc, `trigger (${sTrigger}) must beat description (${sDesc})`);
+  });
 });
 
 describe("searchSkills", () => {
