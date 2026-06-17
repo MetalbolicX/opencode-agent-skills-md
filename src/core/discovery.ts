@@ -101,6 +101,18 @@ export async function findSkillsRecursive(
 }
 
 /**
+ * Default recursion depth for the four priority discovery roots.
+ *
+ * Pre-refactor commit `c2d8e74` used `maxDepth: 1` for the Claude-side
+ * roots; commit `12de52a` ("fix(core): unify maxDepth to 3 across all
+ * discovery roots") widened them deliberately so deeply-nested Claude
+ * skills surface. The regression net in
+ * `tests/integration/skill-discovery.test.ts` pins this value so a
+ * future narrowing breaks loudly.
+ */
+const DEFAULT_DISCOVERY_MAX_DEPTH = 3;
+
+/**
  * Default discovery roots matching the pre-refactor OpenCode priority order
  * (see commit `c2d8e74`, `src/skills.ts#discoverAllSkills`):
  *   1. .opencode/skills/         (project - OpenCode)
@@ -109,20 +121,13 @@ export async function findSkillsRecursive(
  *   4. ~/.claude/skills/         (user - Claude)
  *
  * No shadowing - unique names only. First match wins, duplicates are warned.
- *
- * All four roots use `maxDepth: 3`. The pre-refactor baseline used
- * `maxDepth: 1` for the Claude-side roots, but commit `12de52a`
- * (fix(core): unify maxDepth to 3 across all discovery roots) widened
- * them deliberately so deeply-nested Claude skills surface. The
- * `tests/integration/skill-discovery.test.ts` regression net pins both
- * the location set and this maxDepth unification.
  */
 export function getDefaultOpencodeRoots(directory: string): DiscoveryPath[] {
   return [
-    { path: path.join(directory, '.opencode', 'skills'), label: 'project', maxDepth: 3 },
-    { path: path.join(directory, '.claude', 'skills'), label: 'claude-project', maxDepth: 3 },
-    { path: path.join(homedir(), '.config', 'opencode', 'skills'), label: 'user', maxDepth: 3 },
-    { path: path.join(homedir(), '.claude', 'skills'), label: 'claude-user', maxDepth: 3 }
+    { path: path.join(directory, '.opencode', 'skills'), label: 'project', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
+    { path: path.join(directory, '.claude', 'skills'), label: 'claude-project', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
+    { path: path.join(homedir(), '.config', 'opencode', 'skills'), label: 'user', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
+    { path: path.join(homedir(), '.claude', 'skills'), label: 'claude-user', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH }
   ];
 }
 
