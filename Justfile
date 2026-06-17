@@ -13,10 +13,10 @@ fmt:
 build:
     npm run build
 
-# Install dev plugin locally (project-scoped copy)
+# Install dev plugin locally (project-scoped stub that re-exports the built bundle)
 install: build
     mkdir -p .opencode/plugins
-    cp dist/plugin.js .opencode/plugins/skills.js
+    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../dist/plugin.mjs";\n' > .opencode/plugins/skills.js
 
 # Uninstall local plugin copy
 uninstall:
