@@ -56,20 +56,33 @@ export interface SkillTools {
 }
 
 /**
+ * Callback fired by `UseSkill` after a successful load so the host can
+ * update its session-level bookkeeping (loaded-skill set, TUI icon, etc.).
+ * The core never assumes a callback is registered; missing it must not
+ * break the load.
+ */
+export type OnSkillLoaded = (sessionID: string, skillName: string) => void;
+
+/**
  * Build the four skill tool factories bound to the host, shell, and
  * project directory. The returned object is what the plugin registers
  * under its `tool` hook.
+ *
+ * The optional `onSkillLoaded` callback is threaded through to `UseSkill`
+ * so a successful load can update host session state (e.g., the loaded-
+ * skill set used to suppress duplicate match injection in `chat.message`).
  */
 export function createSkillTools(
   host: OpencodeSkillHost,
   $: PluginInput["$"],
-  directory: string
+  directory: string,
+  onSkillLoaded?: OnSkillLoaded
 ): SkillTools {
   return {
     GetAvailableSkills: GetAvailableSkills(directory),
     ReadSkillFile: ReadSkillFile(directory, host),
     RunSkillScript: RunSkillScript(directory, $),
-    UseSkill: UseSkill(directory, host),
+    UseSkill: UseSkill(directory, host, onSkillLoaded),
   };
 }
 
