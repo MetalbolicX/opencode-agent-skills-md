@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { afterEach, beforeEach, describe, test } from "node:test";
 import type { SkillSummary } from "../../src/core/index";
+import {
+  createFixtureWorkspace,
+  createMockOpencodeClient,
+  createShellRecorder,
+  type FixtureWorkspace,
+} from "../integration/helpers/mock-opencode";
 
 /**
  * Helper functions in `src/opencode/plugin.ts` that were promoted to
@@ -111,5 +117,162 @@ describe("formatMatchedSkillsInjection", () => {
 
     assert.match(output, /- with-trigger: x\s+trigger: auth, login/);
     assert.match(output, /- no-trigger: y/);
+  });
+});
+
+/**
+ * Regression coverage for the skill-loading callback wiring (PR 1 of
+ * `fix-skill-loading-regression`). After the core-decoupling refactor,
+ * `createSkillTools()` stopped threading `onSkillLoaded` through to
+ * `UseSkill`, so a successful `use_skill` call no longer updated the
+ * session's loaded-skill set, and a subsequent keyword-matched
+ * `chat.message` re-injected an evaluation prompt for the already-loaded
+ * skill.
+ *
+ * These tests pin both ends of the wiring at the host-adapter boundary:
+ *   1. The factory accepts a callback and the tool calls it.
+ *   2. The full plugin path (createSkillTools + UseSkill + plugin
+ *      bookkeeping) updates `loadedSkillsPerSession` so a second
+ *      matching chat.message does NOT re-inject the skill evaluation.
+ */
+describe("use_skill callback wiring (PR 1)", () => {
+  let workspace: FixtureWorkspace;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+  });
+
+  afterEach(async () => {
+    if (workspace) {
+      await workspace.cleanup();
+    }
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+  });
+
+  test("createSkillTools forwards onSkillLoaded so UseSkill invokes it (R3)", async () => {
+    const { createSkillTools } = await import("../../src/opencode/tools");
+    const { createOpencodeSkillHost } = await import("../../src/opencode/host");
+
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const host = createOpencodeSkillHost(client.client as any);
+    const calls: Array<{ sessionID: string; skillName: string }> = [];
+
+    const tools = createSkillTools(
+      host,
+      shell.shell,
+      workspace.projectRoot,
+      (sessionID, skillName) => calls.push({ sessionID, skillName }),
+    );
+
+    const result = await tools.UseSkill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: "callback-test" } as any,
+    );
+
+    assert.match(result, /loaded\./i, "skill load returns the success message");
+    assert.equal(calls.length, 1, "onSkillLoaded should fire exactly once on a successful load");
+    assert.deepEqual(calls[0], { sessionID: "callback-test", skillName: "scripted-skill" });
+  });
+
+  test("plugin updates loadedSkillsPerSession so a repeat chat.message does not re-inject (R3 dedupe)", async () => {
+    const { SkillsPlugin } = await import("../../src/opencode");
+
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({
+      client: client.client,
+      $: shell.shell,
+      directory: workspace.projectRoot,
+    } as any);
+
+    const SESSION = "session-dedupe-callback";
+
+    // First chat.message: bootstrap the session with the available-skills
+    // block; the keyword matcher is short-circuited on the first message.
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID: SESSION,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "hello", synthetic: false }],
+      } as any,
+    );
+    const promptsAfterBootstrap = client.prompts.length;
+    assert.ok(
+      client.prompts.some((p) => /<available-skills>/.test(p.text)),
+      "first message injects the available-skills block",
+    );
+
+    // Load scripted-skill via use_skill. With the regression, no callback
+    // fires and loadedSkillsPerSession is NOT updated.
+    const loadResult = await plugin.tool.use_skill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: SESSION } as any,
+    );
+    assert.match(loadResult, /loaded\./i, "use_skill reports a successful load");
+    assert.ok(
+      client.prompts.slice(promptsAfterBootstrap).some((p) =>
+        /<skill name="scripted-skill">/.test(p.text),
+      ),
+      "use_skill injects the skill content",
+    );
+
+    // Second chat.message with a keyword matching scripted-skill. With the
+    // regression, the matcher does not see the skill as loaded, so it
+    // re-injects <skill-evaluation-required>.
+    const promptsBeforeRepeat = client.prompts.length;
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID: SESSION,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "use the script skill", synthetic: false }],
+      } as any,
+    );
+    const newPrompts = client.prompts.slice(promptsBeforeRepeat);
+    const evaluationInjections = newPrompts.filter((p) =>
+      /<skill-evaluation-required>/.test(p.text),
+    );
+    assert.equal(
+      evaluationInjections.length,
+      0,
+      "after use_skill loads scripted-skill, a repeat chat.message must NOT re-inject a skill-evaluation prompt for it",
+    );
+  });
+
+  test("use_skill still loads when no callback is registered (R3 missing-callback)", async () => {
+    const { SkillsPlugin } = await import("../../src/opencode");
+
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({
+      client: client.client,
+      $: shell.shell,
+      directory: workspace.projectRoot,
+    } as any);
+
+    const result = await plugin.tool.use_skill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: "session-no-callback" } as any,
+    );
+
+    assert.match(result, /loaded\./i, "skill load returns the success message");
+    assert.ok(
+      client.prompts.some((p) => /<skill name="scripted-skill">/.test(p.text)),
+      "skill content was injected even with no callback registered",
+    );
   });
 });

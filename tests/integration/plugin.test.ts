@@ -101,6 +101,81 @@ describe("plugin integration", () => {
     assert.match(output, /hello/);
     assert.equal(shell.calls[0]?.cwd, workspace.scriptedSkillPath);
   });
+
+  /**
+   * Regression coverage for the skill-loading callback wiring (PR 1 of
+   * `fix-skill-loading-regression`). Asserts the end-to-end behavior at the
+   * integration layer:
+   *   - after `use_skill`, `onSkillLoaded` is observable via the session's
+   *     loaded-skill state
+   *   - the same keyword in a subsequent chat.message does NOT re-trigger
+   *     a <skill-evaluation-required> injection for the loaded skill
+   *
+   * With the regression, the loader does not update loaded-skill state so
+   * the matcher re-emits an evaluation prompt for the already-loaded skill.
+   */
+  test("use_skill callback updates loaded-skill state and prevents duplicate match injection (PR 1)", async () => {
+    const { SkillsPlugin } = await import("../../src/opencode");
+
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({
+      client: client.client,
+      $: shell.shell,
+      directory: workspace.projectRoot,
+    } as any);
+
+    const SESSION = "session-loaded-state";
+
+    // Bootstrap the session: first message injects <available-skills>.
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID: SESSION,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "first message", synthetic: false }],
+      } as any,
+    );
+    const promptsAfterBootstrap = client.prompts.length;
+
+    // Load scripted-skill via use_skill.
+    const loadResult = await plugin.tool.use_skill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: SESSION } as any,
+    );
+    assert.match(loadResult, /loaded\./i, "use_skill reports a successful load");
+    assert.ok(
+      client.prompts.slice(promptsAfterBootstrap).some((p) =>
+        /<skill name="scripted-skill">/.test(p.text),
+      ),
+      "use_skill injects the skill content into the session",
+    );
+
+    // Subsequent chat.message with a keyword matching scripted-skill. The
+    // matcher should see scripted-skill as already loaded and skip the
+    // <skill-evaluation-required> injection.
+    const promptsBeforeRepeat = client.prompts.length;
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID: SESSION,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "use the script skill", synthetic: false }],
+      } as any,
+    );
+    const newPrompts = client.prompts.slice(promptsBeforeRepeat);
+    assert.equal(
+      newPrompts.filter((p) => /<skill-evaluation-required>/.test(p.text)).length,
+      0,
+      "loaded-skill state must suppress re-injection for scripted-skill",
+    );
+  });
 });
 
 /**
