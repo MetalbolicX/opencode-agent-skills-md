@@ -28,6 +28,7 @@ export type { SkillFrontmatter } from "./parse";
 export { SkillFrontmatterSchema, parseSkillFile, parseYamlFrontmatter } from "./parse";
 
 export {
+  defaultOnDuplicate,
   discoverAllSkills,
   findFile,
   findSkillsRecursive,
