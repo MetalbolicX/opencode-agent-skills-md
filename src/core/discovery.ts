@@ -101,9 +101,9 @@ export async function findSkillsRecursive(
 export function getDefaultOpencodeRoots(directory: string): DiscoveryPath[] {
   return [
     { path: path.join(directory, '.opencode', 'skills'), label: 'project', maxDepth: 3 },
-    { path: path.join(directory, '.claude', 'skills'), label: 'claude-project', maxDepth: 1 },
+    { path: path.join(directory, '.claude', 'skills'), label: 'claude-project', maxDepth: 3 },
     { path: path.join(homedir(), '.config', 'opencode', 'skills'), label: 'user', maxDepth: 3 },
-    { path: path.join(homedir(), '.claude', 'skills'), label: 'claude-user', maxDepth: 1 }
+    { path: path.join(homedir(), '.claude', 'skills'), label: 'claude-user', maxDepth: 3 }
   ];
 }
 
