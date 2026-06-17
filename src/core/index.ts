@@ -43,3 +43,11 @@ export { findScripts, isPathSafe } from "./scripts";
 export { findClosestMatch, levenshtein } from "./match";
 
 export { formatSkillListing, renderAvailableSkillsBlock } from "./content";
+
+export {
+  escapeRegex,
+  keywordMatch,
+  scoreSkill,
+  searchSkills,
+  tokenize,
+} from "./search";
