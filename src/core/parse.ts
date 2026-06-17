@@ -46,7 +46,12 @@ export const SkillFrontmatterSchema = z.object({
     .min(1, { message: "Description cannot be empty" }),
   license: z.string().optional(),
   "allowed-tools": z.array(z.string()).optional(),
-  metadata: z.record(z.string(), z.string()).optional()
+  metadata: z
+    .object({
+      tags: z.array(z.string()).optional(),
+    })
+    .passthrough()
+    .optional(),
 });
 
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
@@ -90,12 +95,20 @@ export async function parseSkillFile(
   const skillDirPath = path.dirname(skillPath);
   const scripts = await findScripts(skillDirPath);
 
+  // `metadata.namespace` is a passthrough key, so its static type is
+  // `unknown`. We only surface it when it is actually a string, which
+  // matches the behaviour of the previous record(string,string) schema.
+  const rawNamespace = frontmatter.metadata?.namespace;
+  const namespace =
+    typeof rawNamespace === "string" ? rawNamespace : undefined;
+
   return {
     name: frontmatter.name,
     description: frontmatter.description,
     path: skillDirPath,
     relativePath,
-    namespace: frontmatter.metadata?.namespace,
+    namespace,
+    tags: frontmatter.metadata?.tags ?? [],
     label,
     scripts,
     template: skillContent
