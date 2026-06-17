@@ -11,6 +11,7 @@
  *   - name exact                = 100
  *   - name prefix               = 90
  *   - name fuzzy (sim > 0.4)    = 70 * sim
+ *   - trigger substring         = 60
  *   - description ALL tokens    = 50  (bonus, added on top of per-token max+sum)
  *   - description ANY token     = 30
  *   - description fuzzy (best)  = 60 * sim (capped at 60)
@@ -91,13 +92,21 @@ function bestDescriptionTokenSim(descLower: string, token: string): number {
  *
  * The "description contains ALL tokens" tier (50) is applied as a
  * per-token lift, not a flat bonus, so the ordering
- *   name exact > name prefix > name fuzzy > desc-all > desc-any
+ *   name exact > name prefix > name fuzzy > trigger > desc-all > desc-any
  * is preserved even after the `max + 0.1 * sum` multi-token formula.
+ *
+ * The `trigger` tier (60) is a flat per-token contribution: any token
+ * that appears as a case-insensitive substring of `skill.trigger` adds
+ * 60 to that token's contribution. Trigger is sandwiched between the
+ * name tiers (≥70) and the description tiers (≤50) so the invariant
+ *   name > trigger > description
+ * holds for single-token queries.
  */
 export function scoreSkill(skill: Skill, tokens: string[]): number {
   if (tokens.length === 0) return 0;
   const name = skill.name.toLowerCase();
   const desc = skill.description.toLowerCase();
+  const trigger = skill.trigger?.toLowerCase() ?? "";
 
   // When every token appears in the description, each per-token
   // description contribution is lifted from 30 (ANY) to 50 (ALL).
@@ -117,6 +126,10 @@ export function scoreSkill(skill: Skill, tokens: string[]): number {
     } else {
       const nameSim = similarity(name, token);
       if (nameSim > 0.4) s = Math.max(s, 70 * nameSim);
+    }
+
+    if (trigger.length > 0 && trigger.includes(token)) {
+      s = Math.max(s, 60);
     }
 
     if (desc.includes(token)) {

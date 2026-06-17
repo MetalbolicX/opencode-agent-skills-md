@@ -32,11 +32,26 @@ function getLoadedSkills(sessionID: string): Set<string> {
   return set;
 }
 
-function formatMatchedSkillsInjection(
-  matchedSkills: Array<{ name: string; description: string }>
+/**
+ * Render the matched-skill synthetic injection that asks the model to
+ * evaluate which of the matched skills (if any) it should activate.
+ *
+ * Each skill line carries a sub-line `trigger: <text>` whenever the
+ * skill has a non-empty `trigger`, so the model knows which user
+ * phrases should activate it. Skills with no trigger render exactly as
+ * before (`- name: description`).
+ */
+export function formatMatchedSkillsInjection(
+  matchedSkills: SkillSummary[]
 ): string {
   const skillLines = matchedSkills
-    .map((s) => `- ${s.name}: ${s.description}`)
+    .map((s) => {
+      const head = `- ${s.name}: ${s.description}`;
+      const trigger = s.trigger && s.trigger.length > 0
+        ? `\n  trigger: ${s.trigger}`
+        : "";
+      return head + trigger;
+    })
     .join("\n");
 
   return `<skill-evaluation-required>
@@ -54,8 +69,19 @@ IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. 
 </skill-evaluation-required>`;
 }
 
-// Lightweight keyword matching to replace ML embeddings
-function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] {
+/**
+ * Lightweight keyword matching to replace ML embeddings.
+ *
+ * Per-token contribution:
+ *   - name hit    = 2x
+ *   - trigger hit = 1.5x
+ *   - desc hit    = 1x
+ *
+ * The trigger tier (1.5x) sits between name (2x) and description (1x)
+ * so a trigger-matched skill outranks a description-matched skill at
+ * the same query, but a name-matched skill still wins overall.
+ */
+export function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] {
   const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
   if (tokens.length === 0) return [];
 
@@ -63,9 +89,11 @@ function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary
     let score = 0;
     const nameStr = skill.name.toLowerCase();
     const descStr = skill.description.toLowerCase();
+    const triggerStr = skill.trigger?.toLowerCase() ?? "";
 
     for (const token of tokens) {
       if (nameStr.includes(token)) score += 2;
+      if (triggerStr.length > 0 && triggerStr.includes(token)) score += 1.5;
       if (descStr.includes(token)) score += 1;
     }
     return { skill, score };

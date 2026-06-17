@@ -107,7 +107,13 @@ const GetAvailableSkills = (directory: string): SkillTool => {
           const scripts = s.scripts.length > 0
             ? ` [scripts: ${s.scripts.map(sc => sc.relativePath).join(', ')}]`
             : '';
-          return `${s.name} (${s.label})\n  ${s.description}${scripts}`;
+          // PR 2: render `trigger: <text>` on its own line when set.
+          // The always-on `<available-skills>` block stays compact; only
+          // this targeted listing surfaces the trigger.
+          const trigger = s.trigger && s.trigger.length > 0
+            ? `\n  trigger: ${s.trigger}`
+            : '';
+          return `${s.name} (${s.label})\n  ${s.description}${trigger}${scripts}`;
         })
         .join('\n\n');
     }

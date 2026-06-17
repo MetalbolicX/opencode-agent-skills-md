@@ -224,16 +224,22 @@ export async function listSkillFiles(skillPath: string, maxDepth: number = 3): P
 }
 
 /**
- * Get summaries of all available skills (name + description only).
- * Used by preflight LLM call to evaluate which skills are relevant.
+ * Get summaries of all available skills (name, description, trigger).
+ * Used by preflight LLM call to evaluate which skills are relevant and
+ * by the plugin's keyword matcher to rank matched skills.
+ *
+ * The `trigger` frontmatter key (PR 2 of `trigger-aware-skill-discovery`)
+ * is threaded through so the keyword matcher can apply the 1.5x trigger
+ * tier and the targeted outputs can render trigger text.
  *
  * @param directory - Project directory to discover skills from
  * @returns Array of skill summaries
  */
-export async function getSkillSummaries(directory: string): Promise<Array<{ name: string; description: string }>> {
+export async function getSkillSummaries(directory: string): Promise<Array<{ name: string; description: string; trigger?: string }>> {
   const skillsByName = await discoverAllSkills(directory);
   return Array.from(skillsByName.values()).map(skill => ({
     name: skill.name,
     description: skill.description,
+    trigger: skill.trigger,
   }));
 }
