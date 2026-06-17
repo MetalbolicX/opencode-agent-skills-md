@@ -155,6 +155,25 @@ describe("use_skill callback wiring (PR 1)", () => {
     }
   });
 
+  /** Drive `chat.message` with a plain text part (the only path the plugin's matcher inspects). */
+  async function sendMessage(
+    plugin: { "chat.message": (input: unknown, output: unknown) => Promise<void> },
+    sessionID: string,
+    text: string,
+  ): Promise<void> {
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text, synthetic: false }],
+      } as any,
+    );
+  }
+
   test("createSkillTools forwards onSkillLoaded so UseSkill invokes it (R3)", async () => {
     const { createSkillTools } = await import("../../src/opencode/tools");
     const { createOpencodeSkillHost } = await import("../../src/opencode/host");
@@ -196,17 +215,7 @@ describe("use_skill callback wiring (PR 1)", () => {
 
     // First chat.message: bootstrap the session with the available-skills
     // block; the keyword matcher is short-circuited on the first message.
-    await plugin["chat.message"](
-      {},
-      {
-        message: {
-          sessionID: SESSION,
-          model: { providerID: "test-provider", modelID: "test-model" },
-          agent: "test-agent",
-        },
-        parts: [{ type: "text", text: "hello", synthetic: false }],
-      } as any,
-    );
+    await sendMessage(plugin, SESSION, "hello");
     const promptsAfterBootstrap = client.prompts.length;
     assert.ok(
       client.prompts.some((p) => /<available-skills>/.test(p.text)),
@@ -227,30 +236,24 @@ describe("use_skill callback wiring (PR 1)", () => {
       "use_skill injects the skill content",
     );
 
-    // Second chat.message with a keyword matching scripted-skill. With the
-    // regression, the matcher does not see the skill as loaded, so it
-    // re-injects <skill-evaluation-required>.
+    // Second chat.message with a keyword that also matches scripted-skill.
+    // Other skills may legitimately match too, but scripted-skill MUST be
+    // filtered out by the loaded-skill set after the fix. Before the fix,
+    // scripted-skill appears because loadedSkillsPerSession was never
+    // updated by use_skill (no callback was wired).
     const promptsBeforeRepeat = client.prompts.length;
-    await plugin["chat.message"](
-      {},
-      {
-        message: {
-          sessionID: SESSION,
-          model: { providerID: "test-provider", modelID: "test-model" },
-          agent: "test-agent",
-        },
-        parts: [{ type: "text", text: "use the script skill", synthetic: false }],
-      } as any,
-    );
+    await sendMessage(plugin, SESSION, "use the script skill");
     const newPrompts = client.prompts.slice(promptsBeforeRepeat);
     const evaluationInjections = newPrompts.filter((p) =>
       /<skill-evaluation-required>/.test(p.text),
     );
-    assert.equal(
-      evaluationInjections.length,
-      0,
-      "after use_skill loads scripted-skill, a repeat chat.message must NOT re-inject a skill-evaluation prompt for it",
-    );
+    for (const prompt of evaluationInjections) {
+      assert.doesNotMatch(
+        prompt.text,
+        /^- scripted-skill:/m,
+        "loaded-skill state must suppress scripted-skill from re-injection",
+      );
+    }
   });
 
   test("use_skill still loads when no callback is registered (R3 missing-callback)", async () => {
