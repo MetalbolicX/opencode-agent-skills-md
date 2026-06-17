@@ -20,6 +20,7 @@ import {
   isPathSafe,
   listSkillFiles,
   resolveSkill,
+  searchSkills,
 } from "../core";
 import type { OpencodeSkillHost } from "./host";
 
@@ -74,25 +75,21 @@ export function createSkillTools(
 
 const GetAvailableSkills = (directory: string): SkillTool => {
   return tool({
-    description: "Get available skills with their descriptions. Optionally filter by query.",
+    description:
+      "Get available skills with their descriptions. Optionally filter by free-text query and/or tag keywords.",
     args: {
       query: tool.schema.string().optional()
-        .describe("Search query to filter skills (matches name and description)")
+        .describe("Free-text search query. Matched against skill name and description; relevance-ranked."),
+      keywords: tool.schema.array(tool.schema.string()).optional()
+        .describe("Optional list of tag keywords. Only skills whose metadata.tags include at least one entry are returned.")
     },
     async execute(args) {
       const skillsByName = await discoverAllSkills(directory);
       const allSkills = Array.from(skillsByName.values());
 
-      let filtered = allSkills;
+      const matched = searchSkills(allSkills, args.query ?? "", args.keywords);
 
-      if (args.query) {
-        const pattern = new RegExp(args.query.replace(/\*/g, '.*'), 'i');
-        filtered = filtered.filter(s =>
-          pattern.test(s.name) || pattern.test(s.description)
-        );
-      }
-
-      if (filtered.length === 0) {
+      if (matched.length === 0) {
         if (args.query) {
           const allSkillNames = allSkills.map(s => s.name);
           const suggestion = findClosestMatch(args.query, allSkillNames);
@@ -105,7 +102,7 @@ const GetAvailableSkills = (directory: string): SkillTool => {
         return "No skills found matching your query.";
       }
 
-      return filtered
+      return matched
         .map(s => {
           const scripts = s.scripts.length > 0
             ? ` [scripts: ${s.scripts.map(sc => sc.relativePath).join(', ')}]`
