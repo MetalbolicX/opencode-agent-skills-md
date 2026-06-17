@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { describe, test } from "node:test";
+import { afterEach, beforeEach, describe, test } from "node:test";
+import {
+  createFixtureWorkspace,
+  type FixtureWorkspace,
+} from "./helpers/mock-opencode";
 
 /**
  * PR 3 of `trigger-aware-skill-discovery` — External Skill Normalization.
@@ -141,5 +146,170 @@ describe("External skill normalization (PR 3)", () => {
         `${name} trigger text must be preserved verbatim by the normalization pass`,
       );
     }
+  });
+});
+
+/**
+ * Regression coverage for the discovery-breadth leg of
+ * `fix-skill-loading-regression` (PR 2). The pre-refactor discovery
+ * walked four standard locations in priority order:
+ *
+ *   1. .opencode/skills/             (project)
+ *   2. .claude/skills/               (project)
+ *   3. ~/.config/opencode/skills/    (user)
+ *   4. ~/.claude/skills/             (user)
+ *
+ * Each test uses the shared fixture workspace (which sets HOME to a
+ * temp dir so `homedir()` resolves to the user-side fixtures) and
+ * exercises a single layer of the spec R5 contract.
+ */
+describe("discovery breadth — four-location priority (PR 2 R5)", () => {
+  let workspace: FixtureWorkspace;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+  });
+
+  afterEach(async () => {
+    if (workspace) {
+      await workspace.cleanup();
+    }
+  });
+
+  test("discoverAllSkills surfaces skills from all four priority locations", async () => {
+    const { discoverAllSkills } = await import("../../src/core");
+    const skills = await discoverAllSkills(workspace.projectRoot);
+
+    // .opencode/skills/ (project)
+    assert.ok(skills.has("scripted-skill"), "project .opencode/skills scripted-skill");
+    assert.ok(skills.has("using-superpowers"), "project .opencode/skills using-superpowers");
+    assert.ok(skills.has("nested-skill"), "project nested-skill under .opencode/skills");
+
+    // .claude/skills/ (project) — covered by claude-project-only-skill fixture.
+    assert.ok(
+      skills.has("claude-project-only-skill"),
+      "project .claude/skills claude-project-only-skill must surface",
+    );
+    assert.equal(
+      skills.get("claude-project-only-skill")?.label,
+      "claude-project",
+      "claude-project-only-skill must carry the claude-project label",
+    );
+
+    // ~/.config/opencode/skills/ (user) — covered by user-only-skill.
+    assert.ok(skills.has("user-only-skill"), "user ~/.config/opencode/skills user-only-skill");
+    assert.equal(
+      skills.get("user-only-skill")?.label,
+      "user",
+      "user-only-skill must carry the user label",
+    );
+
+    // ~/.claude/skills/ (user) — covered by claude-user-only-skill.
+    assert.ok(
+      skills.has("claude-user-only-skill"),
+      "user ~/.claude/skills claude-user-only-skill must surface",
+    );
+    assert.equal(
+      skills.get("claude-user-only-skill")?.label,
+      "claude-user",
+      "claude-user-only-skill must carry the claude-user label",
+    );
+  });
+
+  test("first-match-wins: project skill shadows the same-named user skill", async () => {
+    const { discoverAllSkills } = await import("../../src/core");
+    const skills = await discoverAllSkills(workspace.projectRoot);
+
+    assert.equal(
+      skills.get("shared-skill")?.label,
+      "project",
+      "shared-skill under .opencode/skills must shadow ~/.config/opencode/skills/shared-skill",
+    );
+    assert.equal(
+      skills.get("shared-skill")?.description,
+      "project version wins over user fixture",
+      "first-found description wins",
+    );
+  });
+
+  test("duplicate discovery emits the default shadow warning", async () => {
+    const { discoverAllSkills } = await import("../../src/core");
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+    try {
+      await discoverAllSkills(workspace.projectRoot);
+    } finally {
+      console.warn = original;
+    }
+
+    assert.ok(
+      warnings.some((w) => w.includes("shared-skill") && w.includes("shadows duplicate")),
+      "duplicate shared-skill must trigger the default shadow warning",
+    );
+  });
+});
+
+/**
+ * Spec R5 — partial-trigger regression.
+ *
+ * Pre-refactor, the keyword matcher was OR-style (any token scoring > 0
+ * kept the skill in the result set). The current scorer requires every
+ * token to contribute (AND across tokens). For a skill whose `trigger`
+ * is a partial substring of the user's query, the literal-token path
+ * must still surface the skill — the regression covered here is that
+ * a single-token query against a multi-word trigger must NOT silently
+ * drop the skill.
+ */
+describe("discovery breadth — literal-token partial trigger (PR 2 R5)", () => {
+  let workspace: FixtureWorkspace;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+  });
+
+  afterEach(async () => {
+    if (workspace) {
+      await workspace.cleanup();
+    }
+  });
+
+  test("a skill whose trigger tokens are partial substrings of the query still appears", async () => {
+    const { discoverAllSkills, searchSkills } = await import("../../src/core");
+
+    // Lay down a skill whose trigger is a substring of the upcoming query.
+    const skillDir = path.join(workspace.projectRoot, ".opencode", "skills", "partial-trigger-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: partial-trigger-skill",
+        "description: helper for auth login flows",
+        "trigger: auth login",
+        "---",
+        "",
+        "# Partial Trigger Skill",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const skills = await discoverAllSkills(workspace.projectRoot);
+    assert.ok(
+      skills.has("partial-trigger-skill"),
+      "fixture skill must be discoverable",
+    );
+
+    // "auth login" is a partial substring of the user's query "auth login flow".
+    // The single-token query "auth" must also surface the skill via trigger.
+    const byTriggerToken = searchSkills(
+      Array.from(skills.values()),
+      "auth",
+    );
+    assert.ok(
+      byTriggerToken.some((s) => s.name === "partial-trigger-skill"),
+      "literal-token search must surface a skill whose trigger contains the query token",
+    );
   });
 });
