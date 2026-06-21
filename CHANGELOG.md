@@ -18,6 +18,18 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Changed
+
+- **Workspace split**: the repository now publishes two packages from a single pnpm workspace. The reusable, host-agnostic skills engine lives at [`opencode-agent-skills-core`](packages/core) and the OpenCode plugin adapter lives at [`opencode-agent-skills`](packages/opencode-agent-skills). The plugin package now consumes the core engine through a workspace dependency instead of relative source imports. The repo root is a private workspace manifest whose `build`, `test`, and `typecheck` scripts delegate to both packages via `pnpm -r`.
+
+### Added
+
+- The `opencode-agent-skills-core` package is published as a standalone ESM module so custom harnesses, CLIs, and test fixtures can embed the skills engine without pulling `@opencode-ai/plugin`. Consumers implement the `SkillHostClient` / `SkillHostSession` boundary contracts declared in `packages/core/src/types.ts` against their own host.
+
+### Removed
+
+- The legacy `opencode-agent-skills/core` subpath export is gone. Replace imports of `opencode-agent-skills/core` with `opencode-agent-skills-core`. The legacy root `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` have also been removed; each now lives inside the owning workspace package.
+
 ## [0.7.0]
 
 ### Added

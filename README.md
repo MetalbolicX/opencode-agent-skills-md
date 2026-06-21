@@ -6,11 +6,12 @@
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/joshuadavidthomas/opencode-agent-skills?style=flat-square" /></a>
 </p>
 
-<p align="center">OpenCode plugin for discovering reusable skills, loading skill instructions into context, reading skill files, and running skill scripts.</p>
+<p align="center">Reusable Agent Skills engine plus an OpenCode plugin adapter, distributed as two workspace packages.</p>
 
 ## Table of Contents
 
 - [Description](#description)
+- [Which Package?](#which-package)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -21,14 +22,23 @@
 
 ## Description
 
-`opencode-agent-skills` adds four tools to OpenCode for working with Agent Skills:
+This repo publishes two packages:
 
-- `use_skill` loads a skill's `SKILL.md` into the conversation.
-- `read_skill_file` reads supporting files from a skill directory and injects them into context (with path traversal protection).
-- `run_skill_script` runs executable scripts found within a skill directory.
-- `get_available_skills` lists discovered skills, supporting keyword filtering.
+| Package | Purpose |
+|---------|---------|
+| [`opencode-agent-skills`](https://www.npmjs.com/package/opencode-agent-skills) | OpenCode plugin — the four skill tools (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) and the OpenCode host adapter. |
+| [`opencode-agent-skills-core`](packages/core) | Portable, host-agnostic skills engine: discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts. Zero dependency on `@opencode-ai/plugin`. |
 
-It also manages skill context lifecycle, surviving session compaction and automatically suggesting relevant skills based on user input.
+The core engine is the reusable engine; the OpenCode plugin is one concrete adapter built on top of it.
+
+## Which Package?
+
+Pick the package that matches your harness:
+
+- **You use OpenCode** → install [`opencode-agent-skills`](https://www.npmjs.com/package/opencode-agent-skills). It already implements the `SkillHostClient` boundary against the OpenCode SDK and ships the four tools ready to load.
+- **You build a custom harness, CLI, or test fixture** → install [`opencode-agent-skills-core`](packages/core). It is a standalone ESM package whose runtime dependencies exclude `@opencode-ai/plugin`. You provide your own `SkillHostClient` implementation and pass it to the tool factories of your choice.
+
+Both packages live in this repo as a pnpm workspace. From the repo root, `pnpm install` wires them together via the workspace link so the OpenCode plugin can resolve `opencode-agent-skills-core` by name during development.
 
 ## Features
 
@@ -38,6 +48,7 @@ It also manages skill context lifecycle, surviving session compaction and automa
 - **Compaction Resilient**: Re-injects the list of loaded skills after session compaction events to ensure they remain available in long-running sessions.
 - **Script Execution**: Recursively finds and executes scripts (files with the executable bit set) within skill directories.
 - **Superpowers Mode**: Optional integration to automatically bootstrap the `using-superpowers` workflow.
+- **Reusable Engine**: The core package is host-agnostic — write a `SkillHostClient` for your harness and reuse the entire skills engine without pulling the OpenCode SDK.
 
 ## Installation
 
@@ -61,27 +72,13 @@ To pin a specific version:
 
 Restart OpenCode after updating the config.
 
-### Local development
+### Custom harness (standalone engine)
+
+Install the core engine and implement `SkillHostClient` against your own host:
 
 ```bash
-git clone https://github.com/joshuadavidthomas/opencode-agent-skills ~/.config/opencode/opencode-agent-skills
-cd ~/.config/opencode/opencode-agent-skills
-pnpm install
-pnpm run build
-mkdir -p ~/.config/opencode/plugin
-ln -sf "$(pwd)/dist/opencode/index.js" ~/.config/opencode/plugin/skills.ts
+pnpm add opencode-agent-skills-core
 ```
-
-### Programmatic subpath exports
-
-The package publishes two ESM subpath exports so harness authors can embed the portable engine without pulling the OpenCode SDK:
-
-| Subpath | Resolves to | Intended for |
-|---------|-------------|--------------|
-| `opencode-agent-skills` | `./dist/opencode/index.js` | OpenCode host adapter (default `SkillsPlugin` factory + `createOpencodeSkillHost`) |
-| `opencode-agent-skills/core` | `./dist/core/index.js` | Portable engine: `discoverAllSkills`, `parseSkillFile`, `resolveSkill`, `SkillHostClient`, `SkillHostSession`, etc. |
-
-The core subpath has zero runtime dependency on `@opencode-ai/plugin` and is the right entry point for custom harnesses, CLIs, and test fixtures. Example:
 
 ```ts
 import {
@@ -91,10 +88,26 @@ import {
   type Skill,
   type SkillHostClient,
   type SkillHostSession,
-} from "opencode-agent-skills/core";
+} from "opencode-agent-skills-core";
 ```
 
-To reuse the core from a new harness, implement the two interfaces (`SkillHostClient`, `SkillHostSession`) declared in `src/core/types.ts` and pass an instance to the tool factories of your choice.
+The core package has zero runtime dependency on `@opencode-ai/plugin`, so it is the right entry point for custom harnesses, CLIs, and test fixtures. Implement the `SkillHostClient` interface declared in `packages/core/src/types.ts` and pass an instance to the tool factories of your choice.
+
+### Local development
+
+```bash
+git clone https://github.com/joshuadavidthomas/opencode-agent-skills
+cd opencode-agent-skills
+pnpm install
+pnpm run build    # builds both packages via `pnpm -r run build`
+```
+
+The OpenCode plugin bundle is emitted at `packages/opencode-agent-skills/dist/opencode/index.js`. Symlink it into your local OpenCode plugin directory:
+
+```bash
+mkdir -p ~/.config/opencode/plugin
+ln -sf "$(pwd)/packages/opencode-agent-skills/dist/opencode/index.js" ~/.config/opencode/plugin/skills.ts
+```
 
 ## Usage
 
@@ -158,7 +171,12 @@ get_available_skills({ query: "refactor" })
 
 ## Contributing
 
-Contributions are welcome. The codebase uses TypeScript, Zod for schema validation, and Rolldown for bundling.
+Contributions are welcome. The codebase uses TypeScript and Rolldown for bundling. Two workspace packages live in this repo:
+
+- `packages/core/` — the portable skills engine.
+- `packages/opencode-agent-skills/` — the OpenCode plugin.
+
+Workspace commands at the repo root (`pnpm run build`, `pnpm test`, `pnpm run typecheck`) delegate to both packages via `pnpm -r`.
 
 Please run the following before opening a pull request:
 ```bash

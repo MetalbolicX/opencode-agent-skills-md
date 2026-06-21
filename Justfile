@@ -9,14 +9,14 @@ default:
 fmt:
     @just --fmt
 
-# Build the plugin
+# Build both workspace packages (core engine + OpenCode plugin)
 build:
-    npm run build
+    pnpm run build
 
 # Install dev plugin locally (project-scoped stub that re-exports the built bundle)
 install: build
     mkdir -p .opencode/plugins
-    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../dist/plugin.mjs";\n' > .opencode/plugins/skills.js
+    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills/dist/opencode/index.js";\n' > .opencode/plugins/skills.js
 
 # Uninstall local plugin copy
 uninstall:
@@ -26,6 +26,14 @@ uninstall:
 status:
     @ls -la .opencode/plugins/skills.js 2>/dev/null || echo "Not installed"
 
-# Run tests
+# Run the full test suite (both packages + workspace contract test)
 test:
-    npm test
+    pnpm test
+
+# Run the workspace contract test in isolation
+test-workspace:
+    pnpm run test:workspace
+
+# Typecheck both workspace packages
+typecheck:
+    pnpm run typecheck
