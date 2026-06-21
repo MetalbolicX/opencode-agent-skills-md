@@ -149,3 +149,4 @@ dist
 !CLAUDE.md
 .debug/
 .atl/
+.opencode/plugins/*.js

@@ -1,62 +1,35 @@
 {
-    "name": "opencode-agent-skills",
-    "version": "0.7.0",
-    "description": "A dynamic skills plugin for OpenCode that provides tools for loading and using reusable AI agent skills.",
-    "author": "Josh Thomas <josh@joshthomas.dev>",
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/joshuadavidthomas/opencode-agent-skills.git"
-    },
-    "keywords": [
-        "opencode",
-        "plugin",
-        "skills",
-        "agent",
-        "ai"
-    ],
-    "main": "dist/opencode/index.js",
-    "type": "module",
-    "exports": {
-        ".": {
-            "types": "./dist/opencode/index.d.ts",
-            "import": "./dist/opencode/index.js",
-            "default": "./dist/opencode/index.js"
-        },
-        "./core": {
-            "types": "./dist/core/index.d.ts",
-            "import": "./dist/core/index.js",
-            "default": "./dist/core/index.js"
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "scripts": {
-        "build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json",
-        "pretest": "npm run build",
-        "test": "npm run test:unit && npm run test:core && npm run test:opencode && npm run test:integration && npm run test:e2e",
-        "test:unit": "node --import tsx --test src/*.test.ts",
-        "test:core": "node --import tsx --test tests/core/*.test.ts",
-        "test:opencode": "node --import tsx --test tests/opencode/*.test.ts",
-        "test:integration": "node --import tsx --test tests/integration/*.test.ts",
-        "test:e2e": "node --import tsx --test tests/e2e/*.test.ts",
-        "typecheck": "tsc --noEmit"
-    },
-    "dependencies": {
-        "@opencode-ai/plugin": "^1.15.11",
-        "yaml": "^2.9.0",
-        "zod": "^4.4.3"
-    },
-    "devDependencies": {
-        "@rollup/plugin-typescript": "^12.3.0",
-        "@types/node": "^25.9.1",
-        "rolldown": "^1.0.3",
-        "tslib": "^2.8.1",
-        "tsx": "^4.22.3",
-        "typescript": "^6.0.3"
-    },
-    "engines": {
-        "node": ">=18.0.0"
-    }
+  "name": "opencode-agent-skills-workspace",
+  "version": "0.7.0",
+  "private": true,
+  "description": "pnpm workspace root for opencode-agent-skills. The user-facing OpenCode plugin lives at packages/opencode-agent-skills and the portable engine at packages/core. This manifest exists only to wire the workspace — it has no exports of its own; consumers install one of the workspace packages directly.",
+  "author": "Josh Thomas <josh@joshthomas.dev>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joshuadavidthomas/opencode-agent-skills.git"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "skills",
+    "agent",
+    "ai"
+  ],
+  "scripts": {
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "test": "pnpm -r --no-bail --workspace-concurrency=1 test && node --import tsx --test tests/workspace.test.ts",
+    "test:workspace": "node --import tsx --test tests/workspace.test.ts",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "opencode-agent-skills": "workspace:*",
+    "opencode-agent-skills-core": "workspace:*",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
 }

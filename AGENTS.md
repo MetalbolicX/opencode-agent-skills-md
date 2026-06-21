@@ -3,25 +3,26 @@
 ## Commands
 - **Package manager:** pnpm.
 - **Install:** `pnpm install`
-- **Test:** `pnpm test`
-- **Single test file:** `node --import tsx --test src/utils.test.ts` (or the matching file in `tests/**`)
-- **Typecheck:** `pnpm run typecheck`
-- **Build:** `pnpm run build`
+- **Test:** `pnpm test` (runs `pnpm -r --no-bail test` for both packages, then the workspace contract test if all packages pass)
+- **Workspace contract test only:** `pnpm run test:workspace` (runs `node --import tsx --test tests/workspace.test.ts`)
+- **Single test file:** `pnpm -F opencode-agent-skills-core exec node --import tsx --test tests/<file>.test.ts` (or any file inside a package's `tests/`)
+- **Typecheck:** `pnpm run typecheck` (delegates to `pnpm -r run typecheck`)
+- **Build:** `pnpm run build` (delegates to `pnpm -r --workspace-concurrency=1 run build`)
 
 ## Code Style
 - TypeScript is strict (`noUncheckedIndexedAccess` is on); check indexed access before using it.
 - ESM only; use `import`/`export` and `node:` builtins.
-- Runtime validation uses Zod.
+- Runtime validation is manual (no Zod dependency).
 - Keep public functions documented with JSDoc when they are part of the plugin surface.
 - Prefer graceful fallbacks over hard failures for optional discovery and compaction hooks.
 - Validate user-supplied paths before reading files outside a skill root.
 
 ## Repo Structure
-- `src/plugin.ts` is the plugin entrypoint.
-- `src/tools.ts` defines the four skill tools.
-- `src/skills.ts` handles discovery, parsing, and resolution.
-- `src/superpowers.ts` injects the optional Superpowers bootstrap.
-- Tests live in `src/*.test.ts` plus `tests/integration/` and `tests/e2e/`.
+This is a pnpm workspace with two packages:
+- `packages/core/src/` — the portable, host-agnostic skills engine (`opencode-agent-skills-core`). Discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts.
+- `packages/opencode-agent-skills/src/` — the OpenCode plugin adapter (`opencode-agent-skills`). The four skill tools, the OpenCode host implementation, and the plugin factory.
+- Per-package tests live inside `packages/<pkg>/tests/`.
+- The repo root is a private workspace manifest (`package.json`) with no source of its own; legacy `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` were removed in favor of the per-package locations.
 
 ## Skill Behavior
 - Discovery order is `.opencode/skills/`, `.claude/skills/`, `~/.config/opencode/skills/`, then `~/.claude/skills/`.
