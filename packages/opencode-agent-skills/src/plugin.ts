@@ -18,6 +18,13 @@ import {
 } from "opencode-agent-skills-core";
 import { createOpencodeSkillHost, type OpencodeSkillHostClient } from "./host";
 import { createSkillTools } from "./tools";
+import { debugLog } from "opencode-agent-skills-core";
+import {
+  isChatTextPart,
+  isSessionCompactedEvent,
+  isSessionDeletedEvent,
+  type ChatMessageOutput,
+} from "./sdk";
 
 async function injectSkillsList(
   directory: string,
@@ -183,18 +190,25 @@ export const SkillsPlugin: Plugin = async ({
         path: { id: sessionID },
       });
       if (existing.data) {
-        const hasSkillsContent = existing.data.some((msg: any) => {
-          const parts = (msg as any).parts || (msg.info as any).parts;
+        const hasSkillsContent = existing.data.some((msg) => {
+          const m = msg as { parts?: unknown; info?: { parts?: unknown } };
+          const parts = Array.isArray(m.parts)
+            ? m.parts
+            : Array.isArray(m.info?.parts)
+            ? m.info.parts
+            : null;
           if (!parts) return false;
-          return parts.some((part: any) =>
-            part.type === 'text' && part.text?.includes('<available-skills>')
-          );
+          return parts.some((part) => {
+            if (!isChatTextPart(part)) return false;
+            return typeof part.text === "string" && part.text.includes("<available-skills>");
+          });
         });
         if (hasSkillsContent) {
           setupCompleteSessions.add(sessionID);
         }
       }
-    } catch {
+    } catch (error) {
+      debugLog("isFirstMessageSetup: failed to read existing messages", error);
     }
     return !setupCompleteSessions.has(sessionID);
   }
@@ -239,8 +253,22 @@ export const SkillsPlugin: Plugin = async ({
   );
 
   return {
-    "chat.message": async (input: any, output: any) => {
-      const sessionID = output.message.sessionID;
+    "chat.message": async (input, output) => {
+      // Defensive: narrow the SDK payload through our local type so the
+      // plugin degrades gracefully if the SDK sends a partial / malformed
+      // shape. The plugin factory still returns the SDK's Hooks type, so
+      // the outer signature is inferred from the SDK contract.
+      const rawOutput = output as unknown;
+      if (!rawOutput || typeof rawOutput !== "object") {
+        debugLog("chat.message: missing or non-object output", output);
+        return;
+      }
+      const safeOutput = rawOutput as ChatMessageOutput;
+      if (typeof safeOutput.message?.sessionID !== "string") {
+        debugLog("chat.message: missing sessionID on output", safeOutput);
+        return;
+      }
+      const sessionID = safeOutput.message.sessionID;
 
       // Single discovery per handler invocation. Both bootstrap and keyword
       // matching consume the same snapshot; no cross-request caching.
@@ -252,8 +280,12 @@ export const SkillsPlugin: Plugin = async ({
       }));
 
       const context: SkillHostContext = {
-        model: output.message.model,
-        agent: output.message.agent,
+        // The SDK's model field is `{ providerID, modelID }`; the local
+        // interface declares it as a loose `string` per the SDK-shape spec,
+        // so we cast here to land it on the boundary contract without
+        // pulling the full UserMessage type into the plugin module.
+        model: safeOutput.message.model as { providerID: string; modelID: string } | undefined,
+        agent: safeOutput.message.agent,
       };
 
       if (await isFirstMessageSetup(sessionID)) {
@@ -261,29 +293,41 @@ export const SkillsPlugin: Plugin = async ({
         return;
       }
 
-      const userText = output.parts
-        .flatMap((part: any) =>
-          part.type === "text" && typeof part.text === "string" && !part.synthetic
-            ? [part.text]
-            : []
-        )
+      const rawParts = Array.isArray(safeOutput.parts) ? safeOutput.parts : [];
+      const userText = rawParts
+        .flatMap((part): string[] => {
+          if (!isChatTextPart(part)) return [];
+          if (part.synthetic === true) return [];
+          return typeof part.text === "string" ? [part.text] : [];
+        })
         .join("\n")
         .trim();
 
       await handleKeywordMatch(userText, sessionID, summaries, context);
     },
 
-    event: async ({ event }: { event: any }) => {
-      if (event.type === "session.compacted") {
+    event: async ({ event }) => {
+      // Defensive narrowing via local type guards; the SDK passes a
+      // broad Event union and we only care about two of its variants.
+      if (isSessionCompactedEvent(event)) {
         const sessionID = event.properties.sessionID;
+        if (typeof sessionID !== "string") {
+          debugLog("event: session.compacted missing sessionID", event);
+          return;
+        }
         const context = await host.client.getSessionContext(sessionID);
         await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context);
         await injectSkillsList(directory, host, sessionID, context);
         loadedSkillsPerSession.delete(sessionID);
+        return;
       }
 
-      if (event.type === "session.deleted") {
-        const sessionID = event.properties.info.id;
+      if (isSessionDeletedEvent(event)) {
+        const sessionID = event.properties.info?.id;
+        if (typeof sessionID !== "string") {
+          debugLog("event: session.deleted missing info.id", event);
+          return;
+        }
         setupCompleteSessions.delete(sessionID);
         loadedSkillsPerSession.delete(sessionID);
       }

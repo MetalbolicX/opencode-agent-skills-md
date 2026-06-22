@@ -409,3 +409,143 @@ describe("plugin refactor (PR 2)", () => {
     }
   });
 });
+
+/**
+ * PR 3 diagnostic + SDK-shape hardening coverage. Verifies that:
+ *   1. Malformed hook payloads (null / undefined / partial) degrade
+ *      gracefully — no throw, no spurious prompts.
+ *   2. The `debugLog` helper only emits to stderr when
+ *      `OPENCODE_AGENT_SKILLS_DEBUG` is set, and stays silent otherwise.
+ *   3. The normal chat.message flow produces zero user-visible noise
+ *      (no debug output, no exception).
+ */
+describe("PR 3 diagnostics + SDK shapes (R6 + R8)", () => {
+  let workspace: FixtureWorkspace;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+  const previousDebugMode = process.env.OPENCODE_AGENT_SKILLS_DEBUG;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+    delete process.env.OPENCODE_AGENT_SKILLS_DEBUG;
+  });
+
+  afterEach(async () => {
+    if (workspace) await workspace.cleanup();
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+    if (previousDebugMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_DEBUG;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_DEBUG = previousDebugMode;
+    }
+  });
+
+  async function makePlugin() {
+    const { SkillsPlugin } = await import("../../src");
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({
+      client: client.client,
+      $: shell.shell,
+      directory: workspace.projectRoot,
+    } as any);
+    return { plugin, client };
+  }
+
+  test("chat.message with undefined output degrades gracefully (no throw, no prompts)", async () => {
+    const { plugin, client } = await makePlugin();
+    await assert.doesNotReject(
+      async () => {
+        await plugin["chat.message"]({}, undefined);
+      },
+      "undefined output must not throw",
+    );
+    assert.equal(client.prompts.length, 0, "no prompts injected on malformed payload");
+  });
+
+  test("chat.message with null output degrades gracefully (no throw, no prompts)", async () => {
+    const { plugin, client } = await makePlugin();
+    await assert.doesNotReject(async () => {
+      await plugin["chat.message"]({}, null);
+    });
+    assert.equal(client.prompts.length, 0);
+  });
+
+  test("chat.message with missing sessionID degrades gracefully", async () => {
+    const { plugin, client } = await makePlugin();
+    await assert.doesNotReject(async () => {
+      await plugin["chat.message"]({}, { message: {}, parts: [] });
+    });
+    assert.equal(client.prompts.length, 0, "partial payload must not inject anything");
+  });
+
+  test("event handler with undefined event degrades gracefully", async () => {
+    const { plugin } = await makePlugin();
+    await assert.doesNotReject(async () => {
+      await plugin.event({ event: undefined });
+    });
+  });
+
+  test("event handler with unknown event type degrades gracefully", async () => {
+    const { plugin } = await makePlugin();
+    await assert.doesNotReject(async () => {
+      await plugin.event({ event: { type: "session.created" } });
+    });
+  });
+
+  test("debugLog emits to stderr when OPENCODE_AGENT_SKILLS_DEBUG is set", async () => {
+    const { debugLog } = await import("opencode-agent-skills-core");
+    process.env.OPENCODE_AGENT_SKILLS_DEBUG = "1";
+    const spy = mock.method(console, "error", () => {});
+    try {
+      debugLog("test-context", new Error("boom"));
+      assert.equal(spy.mock.calls.length, 1, "debug output appears when flag is set");
+      const firstCall = spy.mock.calls[0];
+      assert.ok(firstCall, "spy captured a call");
+      const args = firstCall.arguments;
+      assert.match(String(args[0]), /opencode-agent-skills/, "debug prefix is present");
+      assert.equal(args[1], "test-context");
+    } finally {
+      spy.mock.restore();
+    }
+  });
+
+  test("debugLog stays silent when OPENCODE_AGENT_SKILLS_DEBUG is unset", async () => {
+    const { debugLog } = await import("opencode-agent-skills-core");
+    delete process.env.OPENCODE_AGENT_SKILLS_DEBUG;
+    const spy = mock.method(console, "error", () => {});
+    try {
+      debugLog("test-context", new Error("boom"));
+      assert.equal(spy.mock.calls.length, 0, "no debug output when flag is unset");
+    } finally {
+      spy.mock.restore();
+    }
+  });
+
+  test("normal chat.message flow produces zero user-visible noise", async () => {
+    const { plugin, client } = await makePlugin();
+    const spy = mock.method(console, "error", () => {});
+    try {
+      const SESSION = "noise-test-session";
+      await plugin["chat.message"](
+        {},
+        {
+          message: {
+            sessionID: SESSION,
+            model: { providerID: "test-provider", modelID: "test-model" },
+            agent: "test-agent",
+          },
+          parts: [{ type: "text", text: "hello world", synthetic: false }],
+        } as any,
+      );
+      assert.equal(spy.mock.calls.length, 0, "normal flow is silent when debug flag is off");
+      assert.ok(client.prompts.length > 0, "normal flow still injects bootstrap content");
+    } finally {
+      spy.mock.restore();
+    }
+  });
+});

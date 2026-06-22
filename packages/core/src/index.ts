@@ -40,6 +40,8 @@ export {
 
 export { findScripts, isPathSafe } from "./scripts";
 
+export { debugLog } from "./debug";
+
 export { findClosestMatch, levenshtein } from "./match";
 
 export { formatSkillListing, renderAvailableSkillsBlock } from "./content";
