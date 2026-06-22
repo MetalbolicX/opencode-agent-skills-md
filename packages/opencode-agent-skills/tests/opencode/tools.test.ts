@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createOpencodeSkillHost } from "../../src/host";
-import { createSkillTools } from "../../src/tools";
+import { createSkillTools, resolveSkillOrSuggest } from "../../src/tools";
 
 /**
  * Hand-rolled stub OpenCode client. Only the methods the four skill
@@ -133,6 +133,81 @@ describe("GetAvailableSkills trigger rendering (R5)", () => {
       withTriggerBlock!,
       /\n\s*trigger: auth, login/,
       "with-trigger skill block must contain its trigger line"
+    );
+  });
+});
+
+/**
+ * `resolveSkillOrSuggest` — the shared resolver used by the three skill
+ * tools (use_skill, read_skill_file, run_skill_script).
+ *
+ * Three paths exercised:
+ *   - hit: skill exists        → returns the skill's `name`
+ *   - miss + suggestion: close-match skill exists → "Did you mean ..." message
+ *   - miss, no suggestion: nothing close         → bare "not found" message
+ *
+ * We deliberately do NOT test the empty-workspace discovery path: home
+ * dir skills make that non-deterministic in CI.
+ */
+describe("resolveSkillOrSuggest", () => {
+  let workspace: string;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-resolver-"));
+    const projectRoot = path.join(workspace, ".opencode", "skills");
+    await mkdir(path.join(projectRoot, "alpha"), { recursive: true });
+    await mkdir(path.join(projectRoot, "beta"), { recursive: true });
+
+    const fixture = (name: string) => [
+      "---",
+      `name: ${name}`,
+      `description: fixture skill ${name}`,
+      "---",
+      "",
+      `# ${name}`,
+      "",
+    ].join("\n");
+
+    await writeFile(path.join(projectRoot, "alpha", "SKILL.md"), fixture("alpha"), "utf8");
+    await writeFile(path.join(projectRoot, "beta", "SKILL.md"), fixture("beta"), "utf8");
+
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+  });
+
+  after(async () => {
+    if (workspace) {
+      await rm(workspace, { recursive: true, force: true });
+    }
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+  });
+
+  test("returns the skill name on hit", async () => {
+    const result = await resolveSkillOrSuggest(workspace, "alpha");
+    assert.equal(result, "alpha");
+  });
+
+  test("returns a Did-you-mean message on miss with a close match", async () => {
+    // "alph" is a prefix of "alpha" — findClosestMatch scores this well above
+    // its 0.4 threshold, so the helper must surface the suggestion.
+    const result = await resolveSkillOrSuggest(workspace, "alph");
+    assert.equal(
+      result,
+      `Skill "alph" not found. Did you mean "alpha"?`,
+    );
+  });
+
+  test("returns the bare not-found message when no close match exists", async () => {
+    // Far from any fixture; nothing in the project's `.opencode/skills` will
+    // score above the findClosestMatch threshold.
+    const result = await resolveSkillOrSuggest(workspace, "xyzzy");
+    assert.equal(
+      result,
+      `Skill "xyzzy" not found. Use get_available_skills to list available skills.`,
     );
   });
 });

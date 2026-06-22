@@ -100,3 +100,183 @@ describe("parseSkillFile — trigger frontmatter", () => {
     assert.equal(skill, null, "expected parseSkillFile to return null for invalid trigger type");
   });
 });
+
+/**
+ * Safe narrowing in `validateFrontmatter` (PR1b).
+ *
+ * Each frontmatter field is validated individually before the result is
+ * constructed — no `as unknown as SkillFrontmatter` cast. These tests
+ * confirm `parseSkillFile` returns `null` for every shape the validator
+ * rejects, and that valid frontmatter round-trips through to the Skill.
+ */
+describe("parseSkillFile — safe frontmatter narrowing", () => {
+  let workspace: string;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-narrow-"));
+  });
+
+  after(async () => {
+    if (workspace) {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  async function writeSkill(
+    relDir: string,
+    body: string
+  ): Promise<string> {
+    const dir = path.join(workspace, relDir);
+    await mkdir(dir, { recursive: true });
+    const skillPath = path.join(dir, "SKILL.md");
+    await writeFile(skillPath, body, "utf8");
+    return skillPath;
+  }
+
+  test("rejects non-string name (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "bad-name-type",
+      [
+        "---",
+        "name: 123",
+        "description: hi",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "bad-name-type", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("rejects name that does not match the kebab-case regex (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "bad-name-shape",
+      [
+        "---",
+        "name: BadName",
+        "description: hi",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "bad-name-shape", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("rejects empty description (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "no-description",
+      [
+        "---",
+        "name: no-description",
+        "description: \"\"",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "no-description", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("rejects non-string license (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "bad-license",
+      [
+        "---",
+        "name: bad-license",
+        "description: hi",
+        "license: 42",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "bad-license", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("rejects allowed-tools that is not an array (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "bad-tools",
+      [
+        "---",
+        "name: bad-tools",
+        "description: hi",
+        "allowed-tools: read",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "bad-tools", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("rejects metadata that is a primitive (parseSkillFile -> null)", async () => {
+    const skillPath = await writeSkill(
+      "bad-metadata",
+      [
+        "---",
+        "name: bad-metadata",
+        "description: hi",
+        "metadata: 7",
+        "---",
+        "",
+        "body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "bad-metadata", "project");
+
+    assert.equal(skill, null);
+  });
+
+  test("valid frontmatter surfaces every optional field on the Skill", async () => {
+    const skillPath = await writeSkill(
+      "full-frontmatter",
+      [
+        "---",
+        "name: full-frontmatter",
+        "description: a skill with every optional field set",
+        "trigger: keyword",
+        "license: MIT",
+        "allowed-tools: [read, write]",
+        "metadata:",
+        "  namespace: ns",
+        "  tags: [a, b]",
+        "---",
+        "",
+        "# body",
+      ].join("\n"),
+    );
+
+    const { parseSkillFile } = await import("../src/index.ts");
+    const skill = await parseSkillFile(skillPath, "full-frontmatter", "project");
+
+    assert.ok(skill, "expected parseSkillFile to return a Skill for valid frontmatter");
+    assert.equal(skill?.name, "full-frontmatter");
+    assert.equal(skill?.description, "a skill with every optional field set");
+    assert.equal(skill?.trigger, "keyword");
+    assert.equal(skill?.namespace, "ns");
+    assert.deepEqual(skill?.tags, ["a", "b"]);
+  });
+});
