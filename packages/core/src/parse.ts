@@ -9,14 +9,23 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import YAML from "yaml";
 import type { Skill, SkillLabel } from "./types";
+import { debugLog } from "./debug";
 import { findScripts } from "./scripts";
 
 /**
  * Parse YAML frontmatter using the yaml library with safe options.
  * Uses strict schema to prevent code execution from malicious YAML.
  * Handles all YAML 1.2 features including multi-line strings (| and >).
+ *
+ * Two distinct failure modes:
+ *   - Empty frontmatter (blank / whitespace-only input) returns `{}`
+ *     without touching the parser. This is a valid zero-field case.
+ *   - Malformed YAML (real syntax error) is caught and logged via the
+ *     `debugLog` helper; the function still returns `{}` so callers see
+ *     the same graceful fallback as before.
  */
 export function parseYamlFrontmatter(text: string): Record<string, unknown> {
+  if (text.trim().length === 0) return {};
   try {
     const result = YAML.parse(text, {
       schema: "core",
@@ -25,7 +34,8 @@ export function parseYamlFrontmatter(text: string): Record<string, unknown> {
     return typeof result === "object" && result !== null
       ? (result as Record<string, unknown>)
       : {};
-  } catch {
+  } catch (error) {
+    debugLog("parseYamlFrontmatter: malformed YAML", error);
     return {};
   }
 }
