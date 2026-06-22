@@ -50,7 +50,23 @@ function validateFrontmatter(obj: unknown): SkillFrontmatter | null {
   if (o.license !== undefined && typeof o.license !== "string") return null;
   if (o["allowed-tools"] !== undefined && !Array.isArray(o["allowed-tools"])) return null;
   if (o.metadata !== undefined && typeof o.metadata !== "object") return null;
-  return o as unknown as SkillFrontmatter;
+
+  // Build SkillFrontmatter from validated fields. Avoids the previous
+  // `as unknown as SkillFrontmatter` double cast so the resulting object
+  // is structurally a SkillFrontmatter at every optional key.
+  const frontmatter: SkillFrontmatter = {
+    name: o.name,
+    description: o.description,
+  };
+  if (o.trigger !== undefined) frontmatter.trigger = o.trigger;
+  if (o.license !== undefined) frontmatter.license = o.license;
+  if (o["allowed-tools"] !== undefined) {
+    frontmatter["allowed-tools"] = o["allowed-tools"] as string[];
+  }
+  if (o.metadata !== undefined) {
+    frontmatter.metadata = o.metadata as Record<string, unknown>;
+  }
+  return frontmatter;
 }
 
 /**
