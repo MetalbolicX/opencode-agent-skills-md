@@ -18,6 +18,7 @@ import type {
   SkillLabel,
 } from "./types";
 import { parseSkillFile } from "./parse";
+import { walkDir } from "./walk";
 
 /**
  * Check if a file exists in a directory and return path info.
@@ -48,6 +49,15 @@ export async function findFile(
  * of a discovery root is returned with `relativePath = ""` and wins the
  * shadowing tie-break over same-name skills in subdirectories (first found
  * wins in `discoverAllSkills`).
+ *
+ * The traversal is delegated to the shared {@link walkDir} utility, which
+ * owns hidden-dir / `node_modules` / `.git` skip rules and per-entry error
+ * isolation. The visitor only checks each directory entry for SKILL.md and
+ * records the labeled result; recursion and skip semantics are the walker's
+ * job, not this function's.
+ *
+ * Output is sorted by `relativePath` so callers see a stable order across
+ * runs regardless of the underlying `readdir` enumeration order.
  */
 export async function findSkillsRecursive(
   baseDir: string,
@@ -56,48 +66,27 @@ export async function findSkillsRecursive(
 ): Promise<LabeledDiscoveryResult[]> {
   const results: LabeledDiscoveryResult[] = [];
 
-  async function recurse(dir: string, depth: number, relPath: string) {
-    if (depth > maxDepth) return;
-
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-
-        let stats;
-        try {
-          stats = await fs.stat(fullPath);
-        } catch {
-          continue;
-        }
-
-        if (!stats.isDirectory()) continue;
-
-        const newRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
-        const found = await findFile(fullPath, newRelPath, 'SKILL.md');
-
-        if (found) {
-          results.push({ ...found, label });
-        } else {
-          await recurse(fullPath, depth + 1, newRelPath);
-        }
-      }
-    } catch { }
-  }
-
   try {
     await fs.access(baseDir);
-    // Check the baseDir itself before recursing so a root-level SKILL.md is
-    // discovered and naturally wins the first-found-wins tie-break.
+    // Check the baseDir itself before walking its entries so a root-level
+    // SKILL.md is discovered and naturally wins the first-found-wins tie-break.
     const rootFile = await findFile(baseDir, '', 'SKILL.md');
     if (rootFile) {
       results.push({ ...rootFile, label });
     }
-    await recurse(baseDir, 0, '');
+
+    await walkDir(baseDir, maxDepth, async (entry) => {
+      if (!entry.isDirectory()) return;
+      const fullPath = path.join(entry.parentPath, entry.name);
+      const relPath = path.relative(baseDir, fullPath);
+      const found = await findFile(fullPath, relPath, 'SKILL.md');
+      if (found) {
+        results.push({ ...found, label });
+      }
+    });
   } catch { }
 
-  return results;
+  return results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
 /**
