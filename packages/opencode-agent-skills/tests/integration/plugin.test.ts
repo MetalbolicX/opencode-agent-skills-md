@@ -269,3 +269,48 @@ describe("GetAvailableSkills with keywords", () => {
     assert.ok(typeof result === "string", "returns a string result");
   });
 });
+
+/**
+ * PR 2 plugin refactor coverage at the integration level: confirms the
+ * event hook keeps working with the closure-scoped state. The event
+ * handler reads `event.properties.info.id` (PR 1 had a typo where it
+ * reused the `session.compacted` variable).
+ */
+describe("plugin event hooks survive the PR 2 refactor", () => {
+  let workspace: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+  });
+
+  afterEach(async () => {
+    if (workspace) await workspace.cleanup();
+  });
+
+  test("session.deleted reads event.properties.info.id (no closure-scope leakage)", async () => {
+    const { SkillsPlugin } = await import("../../src");
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({ client: client.client, $: shell.shell, directory: workspace.projectRoot } as any);
+
+    // Bootstrap, then delete — must not throw the "Cannot find name 'sessionID'"
+    // bug that the original (pre-PR2) code would hit if a prior event
+    // handler hadn't set `sessionID` first.
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID: "session-A",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "first message", synthetic: false }],
+      } as any,
+    );
+
+    await assert.doesNotReject(
+      plugin.event({ event: { type: "session.deleted", properties: { info: { id: "session-A" } } } } as any),
+      "session.deleted must resolve event.properties.info.id from its own branch",
+    );
+  });
+});

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, test } from "node:test";
+import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import type { SkillSummary } from "opencode-agent-skills-core";
 import {
   createFixtureWorkspace,
@@ -277,5 +277,135 @@ describe("use_skill callback wiring (PR 1)", () => {
       client.prompts.some((p) => /<skill name="scripted-skill">/.test(p.text)),
       "skill content was injected even with no callback registered",
     );
+  });
+});
+
+/**
+ * PR 2 plugin refactor coverage. The closure-scoped refactor must:
+ *   1. Keep two plugin instances isolated (no shared session state).
+ *   2. Trigger exactly one discovery per chat.message handler call.
+ *   3. Preserve first-message bootstrap and subsequent-message matcher
+ *      behavior.
+ */
+describe("plugin refactor (PR 2)", () => {
+  let workspace: FixtureWorkspace;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+  });
+
+  afterEach(async () => {
+    if (workspace) await workspace.cleanup();
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+  });
+
+  async function sendMessage(
+    plugin: { "chat.message": (input: unknown, output: unknown) => Promise<void> },
+    sessionID: string,
+    text: string,
+  ): Promise<void> {
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text, synthetic: false }],
+      } as any,
+    );
+  }
+
+  test("two plugin instances do not share session state (PR 2 isolation)", async () => {
+    const { SkillsPlugin } = await import("../../src");
+    const clientA = createMockOpencodeClient();
+    const clientB = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const pluginA = await SkillsPlugin({ client: clientA.client, $: shell.shell, directory: workspace.projectRoot } as any);
+    const pluginB = await SkillsPlugin({ client: clientB.client, $: shell.shell, directory: workspace.projectRoot } as any);
+
+    await sendMessage(pluginA, "shared-session-id", "hello");
+    assert.ok(clientA.prompts.some((p) => /<available-skills>/.test(p.text)), "plugin A bootstraps");
+
+    const promptsBBefore = clientB.prompts.length;
+    await sendMessage(pluginB, "shared-session-id", "hello");
+    assert.ok(
+      clientB.prompts.slice(promptsBBefore).some((p) => /<available-skills>/.test(p.text)),
+      "plugin B independently bootstraps the same session id",
+    );
+
+    await pluginA.tool.use_skill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: "shared-session-id" } as any,
+    );
+    const promptsBBeforeKeyword = clientB.prompts.length;
+    await sendMessage(pluginB, "shared-session-id", "use the script skill");
+    const evaluationB = clientB.prompts
+      .slice(promptsBBeforeKeyword)
+      .filter((p) => /<skill-evaluation-required>/.test(p.text));
+    assert.ok(
+      evaluationB.some((p) => /^- scripted-skill:/m.test(p.text)),
+      "plugin B sees scripted-skill as not-loaded (its own loaded set is independent)",
+    );
+  });
+
+  test("chat.message discovers skills exactly once per handler invocation (PR 2 R3+R4+R5)", async () => {
+    const { SkillsPlugin } = await import("../../src");
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({ client: client.client, $: shell.shell, directory: workspace.projectRoot } as any);
+
+    // The fixture has one duplicate (project + user `shared-skill`); each
+    // `discoverAllSkills` triggers exactly one `console.warn` via the
+    // default duplicate callback, so counting warns counts discoveries.
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const warns = (): number => warnSpy.mock.calls.filter(
+        (c) => typeof c.arguments[0] === "string" && c.arguments[0].startsWith("Skill name conflict:"),
+      ).length;
+
+      await sendMessage(plugin, "spy-session", "use the script skill");
+      assert.equal(warns(), 1, "single chat.message = single discovery");
+
+      const before = warns();
+      await sendMessage(plugin, "spy-session", "use the script skill again");
+      assert.equal(warns() - before, 1, "no cross-request caching");
+    } finally {
+      warnSpy.mock.restore();
+    }
+  });
+
+  test("first-message bootstrap and subsequent keyword match are both preserved (PR 2)", async () => {
+    const { SkillsPlugin } = await import("../../src");
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({ client: client.client, $: shell.shell, directory: workspace.projectRoot } as any);
+    const SESSION = "preserved-session";
+
+    await sendMessage(plugin, SESSION, "first message");
+    assert.ok(client.prompts.some((p) => /<available-skills>/.test(p.text)), "first injects available-skills");
+    assert.ok(client.prompts.some((p) => /You have superpowers\./.test(p.text)), "first injects superpowers");
+    assert.ok(
+      !client.prompts.some((p) => /<skill-evaluation-required>/.test(p.text)),
+      "first message does NOT run matcher",
+    );
+
+    await plugin.tool.use_skill.execute({ skill: "scripted-skill" }, { sessionID: SESSION } as any);
+
+    const before = client.prompts.length;
+    await sendMessage(plugin, SESSION, "use the script skill");
+    const newPrompts = client.prompts.slice(before);
+    assert.ok(!newPrompts.some((p) => /<available-skills>/.test(p.text)), "subsequent does NOT re-inject available-skills");
+    const evals = newPrompts.filter((p) => /<skill-evaluation-required>/.test(p.text));
+    for (const p of evals) {
+      assert.doesNotMatch(p.text, /^- scripted-skill:/m, "loaded skills are filtered from match");
+    }
   });
 });
