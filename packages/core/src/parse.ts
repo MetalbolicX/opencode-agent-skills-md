@@ -24,7 +24,7 @@ import { findScripts } from "./scripts";
  *     `debugLog` helper; the function still returns `{}` so callers see
  *     the same graceful fallback as before.
  */
-export function parseYamlFrontmatter(text: string): Record<string, unknown> {
+export const parseYamlFrontmatter = (text: string): Record<string, unknown> => {
   if (text.trim().length === 0) return {};
   try {
     const result = YAML.parse(text, {
@@ -38,7 +38,7 @@ export function parseYamlFrontmatter(text: string): Record<string, unknown> {
     debugLog("parseYamlFrontmatter: malformed YAML", error);
     return {};
   }
-}
+};
 
 export interface SkillFrontmatter {
   name: string;
@@ -51,7 +51,7 @@ export interface SkillFrontmatter {
 
 const NAME_REGEX = /^[\p{Ll}\p{N}-]+$/u;
 
-function validateFrontmatter(obj: unknown): SkillFrontmatter | null {
+const validateFrontmatter = (obj: unknown): SkillFrontmatter | null => {
   if (typeof obj !== "object" || obj === null) return null;
   const o = obj as Record<string, unknown>;
   if (typeof o.name !== "string" || !NAME_REGEX.test(o.name) || o.name.length === 0) return null;
@@ -77,18 +77,21 @@ function validateFrontmatter(obj: unknown): SkillFrontmatter | null {
     frontmatter.metadata = o.metadata as Record<string, unknown>;
   }
   return frontmatter;
-}
+};
 
 /**
  * Parse a SKILL.md file and validate its frontmatter.
  * Returns null if parsing fails (with error logging).
  */
-export async function parseSkillFile(
+export const parseSkillFile = async (
   skillPath: string,
   relativePath: string,
   label: SkillLabel
-): Promise<Skill | null> {
-  const content = await fs.readFile(skillPath, 'utf-8').catch(() => null);
+): Promise<Skill | null> => {
+  const content = await fs.readFile(skillPath, 'utf-8').catch((error) => {
+    debugLog("parseSkillFile: cannot read", skillPath, error);
+    return null;
+  });
   if (!content) {
     return null;
   }
@@ -135,4 +138,4 @@ export async function parseSkillFile(
     scripts,
     template: skillContent
   };
-}
+};

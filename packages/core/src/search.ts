@@ -37,9 +37,9 @@ import { levenshtein } from "./match";
  * cheap to escape and avoids a footgun if the caller composes the
  * result into a character class later.
  */
-export function escapeRegex(input: string): string {
+export const escapeRegex = (input: string): string => {
   return input.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
-}
+};
 
 /**
  * Tokenize a free-text query into lowercase, non-empty tokens.
@@ -48,12 +48,12 @@ export function escapeRegex(input: string): string {
  * trailing whitespace) are dropped so the caller never has to filter
  * them out before scoring.
  */
-export function tokenize(query: string): string[] {
+export const tokenize = (query: string): string[] => {
   return query
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length > 0);
-}
+};
 
 /**
  * Check whether a skill matches at least one of the supplied keywords
@@ -61,20 +61,20 @@ export function tokenize(query: string): string[] {
  * to keep the skill in the result set. An empty keyword list is a no-op
  * (every skill passes).
  */
-export function keywordMatch(skill: Skill, keywords: string[]): boolean {
+export const keywordMatch = (skill: Skill, keywords: string[]): boolean => {
   if (keywords.length === 0) return true;
   const tags = skill.tags ?? [];
   return keywords.some((kw) => tags.includes(kw));
-}
+};
 
 /** Compute a Levenshtein-derived similarity in the 0..1 range. */
-function similarity(a: string, b: string): number {
+const similarity = (a: string, b: string): number => {
   if (a.length === 0 && b.length === 0) return 1;
   return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
-}
+};
 
 /** Best description-token fuzzy similarity for a single query token. */
-function bestDescriptionTokenSim(descLower: string, token: string): number {
+const bestDescriptionTokenSim = (descLower: string, token: string): number => {
   let best = 0;
   for (const dt of descLower.split(/\s+/)) {
     if (dt.length === 0) continue;
@@ -82,7 +82,7 @@ function bestDescriptionTokenSim(descLower: string, token: string): number {
     if (sim > best) best = sim;
   }
   return best;
-}
+};
 
 /**
  * Score a skill against a list of pre-tokenized, lowercase query
@@ -102,7 +102,7 @@ function bestDescriptionTokenSim(descLower: string, token: string): number {
  *   name > trigger > description
  * holds for single-token queries.
  */
-export function scoreSkill(skill: Skill, tokens: string[]): number {
+export const scoreSkill = (skill: Skill, tokens: string[]): number => {
   if (tokens.length === 0) return 0;
   const name = skill.name.toLowerCase();
   const desc = skill.description.toLowerCase();
@@ -146,7 +146,7 @@ export function scoreSkill(skill: Skill, tokens: string[]): number {
   const max = Math.max(...perToken);
   const sum = perToken.reduce((a, b) => a + b, 0);
   return max + 0.1 * sum;
-}
+};
 
 /**
  * Filter, score, and rank skills against a free-text query and an
@@ -159,11 +159,11 @@ export function scoreSkill(skill: Skill, tokens: string[]): number {
  * supplied, the input list is returned unchanged (the caller can use
  * the unranked discovery for browsing).
  */
-export function searchSkills(
+export const searchSkills = (
   skills: Skill[],
   query: string,
   keywords?: string[]
-): Skill[] {
+): Skill[] => {
   let candidates: Skill[] = skills;
 
   if (keywords && keywords.length > 0) {
@@ -185,4 +185,4 @@ export function searchSkills(
     .sort((a, b) => b.score - a.score);
 
   return scored.map(({ skill }) => skill);
-}
+};

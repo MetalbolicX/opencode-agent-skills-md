@@ -44,28 +44,28 @@ export interface SessionDeletedEvent {
 export type SessionEvent = SessionCompactedEvent | SessionDeletedEvent;
 
 /** Type guard: narrows `unknown` to `ChatTextPart` when `part.type === "text"`. */
-export function isChatTextPart(part: unknown): part is ChatTextPart {
+export const isChatTextPart = (part: unknown): part is ChatTextPart => {
   return (
     typeof part === "object" &&
     part !== null &&
     (part as { type?: unknown }).type === "text"
   );
-}
+};
 
 /** Type guard: narrows `unknown` to `SessionCompactedEvent`. */
-export function isSessionCompactedEvent(event: unknown): event is SessionCompactedEvent {
+export const isSessionCompactedEvent = (event: unknown): event is SessionCompactedEvent => {
   return (
     typeof event === "object" &&
     event !== null &&
     (event as { type?: unknown }).type === "session.compacted"
   );
-}
+};
 
 /** Type guard: narrows `unknown` to `SessionDeletedEvent`. */
-export function isSessionDeletedEvent(event: unknown): event is SessionDeletedEvent {
+export const isSessionDeletedEvent = (event: unknown): event is SessionDeletedEvent => {
   return (
     typeof event === "object" &&
     event !== null &&
     (event as { type?: unknown }).type === "session.deleted"
   );
-}
+};

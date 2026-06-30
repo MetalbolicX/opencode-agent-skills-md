@@ -6,7 +6,7 @@
  * access consumed by the plugin and skill tools.
  *
  * The boundary contracts (`SkillHostClient`, `SkillHostSession`,
- * `SkillHostContext`) are declared in the `opencode-agent-skills-core`
+ * `SkillHostContext`) are declared in the `opencode-agent-skills-md-core`
  * package per spec R2; this module IMPLEMENTS them over the OpenCode SDK
  * client plus `node:fs/promises`. No other package may declare a concrete
  * implementation — the plugin package owns exactly one.
@@ -18,7 +18,8 @@ import type {
   SkillHostClient,
   SkillHostContext,
   SkillHostSession,
-} from "opencode-agent-skills-core";
+} from "opencode-agent-skills-md-core";
+import { debugLog } from "opencode-agent-skills-md-core";
 
 /** Concrete OpenCode client (the SDK's generated client type). */
 export type OpencodeClient = PluginInput["client"];
@@ -59,7 +60,7 @@ export interface OpencodeSkillHost {
  * The host is the only place in the codebase that touches the SDK's
  * `client.session.prompt` and `client.session.messages` methods.
  */
-export function createOpencodeSkillHost(client: OpencodeClient): OpencodeSkillHost {
+export const createOpencodeSkillHost = (client: OpencodeClient): OpencodeSkillHost => {
   const skillClient: OpencodeSkillHostClient = {
     async injectContent(sessionID, text, context) {
       await client.session.prompt({
@@ -94,7 +95,8 @@ export function createOpencodeSkillHost(client: OpencodeClient): OpencodeSkillHo
             }
           }
         }
-      } catch {
+      } catch (error) {
+        debugLog("getSessionContext: session lookup failed", sessionID, (error as Error)?.name);
         // Fall through to undefined - mirrors the legacy behaviour where
         // getSessionContext returns undefined on any lookup failure.
       }
@@ -114,4 +116,4 @@ export function createOpencodeSkillHost(client: OpencodeClient): OpencodeSkillHo
   const session = (id: string): SkillHostSession => ({ id });
 
   return { client: skillClient, session };
-}
+};
