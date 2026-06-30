@@ -1,10 +1,10 @@
 /**
- * Workspace boundary contract for the `opencode-agent-skills` repo root.
+ * Workspace boundary contract for the `opencode-agent-skills-md` repo root.
  *
  * PR 3 of `split-core-opencode-packages` turns the repo root into a pure
  * pnpm workspace manifest: no source, no fixtures, no root-level build
  * config. The two real packages live under `packages/core/` and
- * `packages/opencode-agent-skills/`. This test pins the contracts that
+ * `packages/opencode-agent-skills-md/`. This test pins the contracts that
  * prove the consolidation actually happened:
  *
  *   1. Root manifest is a workspace manifest (private, no exports of its own,
@@ -34,7 +34,7 @@ import { describe, test } from "node:test";
 const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-describe("opencode-agent-skills workspace root", () => {
+describe("opencode-agent-skills-md workspace root", () => {
   test("root package.json is a private workspace manifest with no exports of its own", async () => {
     const pkgPath = path.join(REPO_ROOT, "package.json");
     const raw = await readFile(pkgPath, "utf8");
@@ -42,7 +42,7 @@ describe("opencode-agent-skills workspace root", () => {
 
     // Workspace roots must be private — pnpm treats them as metadata
     // containers, not packages to publish. The plugin package
-    // (`opencode-agent-skills`) remains the installable artifact.
+    // (`opencode-agent-skills-md`) remains the installable artifact.
     assert.equal(
       manifest.private,
       true,
@@ -103,10 +103,10 @@ describe("opencode-agent-skills workspace root", () => {
     // These were the legacy "root owns the build" surfaces from the
     // pre-split layout. After PR 3 each one has a per-package home:
     //   - src/core/index.ts            -> packages/core/src/index.ts
-    //   - src/opencode/{4 files}       -> packages/opencode-agent-skills/src/{4 files}
-    //   - rolldown.config.js           -> packages/opencode-agent-skills/rolldown.config.js
-    //   - tsconfig.build.json          -> packages/opencode-agent-skills/tsconfig.build.json
-    //   - tests/fixtures/skills/**     -> packages/opencode-agent-skills/tests/fixtures/skills/**
+    //   - src/opencode/{4 files}       -> packages/opencode-agent-skills-md/src/{4 files}
+    //   - rolldown.config.js           -> packages/opencode-agent-skills-md/rolldown.config.js
+    //   - tsconfig.build.json          -> packages/opencode-agent-skills-md/tsconfig.build.json
+    //   - tests/fixtures/skills/**     -> packages/opencode-agent-skills-md/tests/fixtures/skills/**
     // The root sources/test config that remain (workspace manifest,
     // AGENTS.md, README, etc.) are non-source artifacts.
     for (const legacyPath of [
@@ -138,7 +138,7 @@ describe("opencode-agent-skills workspace root", () => {
   test("root src/core/index.ts compatibility shim has been removed (all callers use the workspace import now)", async () => {
     // The shim only existed to keep legacy relative imports resolvable
     // during PR 1+2; PR 3 deletes it because there are no more legacy
-    // callers (every consumer resolves `opencode-agent-skills-core`
+    // callers (every consumer resolves `opencode-agent-skills-md-core`
     // through the workspace link).
     const shimPath = path.join(REPO_ROOT, "src", "core", "index.ts");
     assert.ok(
@@ -153,12 +153,12 @@ describe("opencode-agent-skills workspace root", () => {
     // Both package names must appear so consumers can find each one.
     assert.match(
       readme,
-      /opencode-agent-skills-core/,
+      /opencode-agent-skills-md-core/,
       "README must mention the standalone core package",
     );
     assert.match(
       readme,
-      /\bopencode-agent-skills\b/,
+      /\bopencode-agent-skills-md\b/,
       "README must mention the OpenCode plugin package",
     );
 
@@ -177,13 +177,13 @@ describe("opencode-agent-skills workspace root", () => {
     );
 
     // The legacy "Programmatic subpath exports" section that pointed
-    // users at `opencode-agent-skills/core` must be gone — the spec
+    // users at `opencode-agent-skills-md/core` must be gone — the spec
     // (R4 REMOVED) explicitly retired that import path in favor of
-    // the standalone `opencode-agent-skills-core` package.
+    // the standalone `opencode-agent-skills-md-core` package.
     assert.doesNotMatch(
       readme,
-      /opencode-agent-skills\/core/,
-      "README must not document the removed `opencode-agent-skills/core` subpath (spec R4 REMOVED)",
+      /opencode-agent-skills-md\/core/,
+      "README must not document the removed `opencode-agent-skills-md/core` subpath (spec R4 REMOVED)",
     );
   });
 
@@ -198,7 +198,7 @@ describe("opencode-agent-skills workspace root", () => {
     const unreleased = unreleasedMatch![1]!;
     assert.match(
       unreleased,
-      /opencode-agent-skills-core/,
+      /opencode-agent-skills-md-core/,
       "CHANGELOG [Unreleased] must mention the new core package",
     );
     assert.match(
@@ -246,8 +246,8 @@ describe("opencode-agent-skills workspace root", () => {
     );
     assert.match(
       agents,
-      /packages\/opencode-agent-skills\/src/,
-      "AGENTS.md must reference packages/opencode-agent-skills/src in its repo structure section",
+      /packages\/opencode-agent-skills-md\/src/,
+      "AGENTS.md must reference packages/opencode-agent-skills-md/src in its repo structure section",
     );
     assert.doesNotMatch(
       agents,
@@ -269,18 +269,18 @@ describe("opencode-agent-skills workspace root", () => {
     // symlinks so they resolve by name from the repo root. This is the
     // end-to-end "the workspace link is alive" check — a stale lockfile
     // or a typo in `pnpm-workspace.yaml` would surface here.
-    const coreResolved = require.resolve("opencode-agent-skills-core");
+    const coreResolved = require.resolve("opencode-agent-skills-md-core");
     assert.match(
       coreResolved,
       /[\\/]packages[\\/]core[\\/]src[\\/]index\.ts$/,
-      `expected opencode-agent-skills-core to resolve to packages/core/src/index.ts, got: ${coreResolved}`,
+      `expected opencode-agent-skills-md-core to resolve to packages/core/src/index.ts, got: ${coreResolved}`,
     );
 
-    const pluginResolved = require.resolve("opencode-agent-skills");
+    const pluginResolved = require.resolve("opencode-agent-skills-md");
     assert.match(
       pluginResolved,
-      /[\\/]packages[\\/]opencode-agent-skills[\\/]src[\\/]index\.ts$/,
-      `expected opencode-agent-skills to resolve to packages/opencode-agent-skills/src/index.ts, got: ${pluginResolved}`,
+      /[\\/]packages[\\/]opencode-agent-skills-md[\\/]src[\\/]index\.ts$/,
+      `expected opencode-agent-skills-md to resolve to packages/opencode-agent-skills-md/src/index.ts, got: ${pluginResolved}`,
     );
 
     assert.ok(coreResolved.startsWith(REPO_ROOT), `core resolution must live under the repo root: ${coreResolved}`);
@@ -294,7 +294,7 @@ describe("opencode-agent-skills workspace root", () => {
     // Cross-check that the per-package sources are in place — without
     // these the workspace link above would resolve to nothing.
     const coreSrc = path.join(REPO_ROOT, "packages", "core", "src");
-    const pluginSrc = path.join(REPO_ROOT, "packages", "opencode-agent-skills", "src");
+    const pluginSrc = path.join(REPO_ROOT, "packages", "opencode-agent-skills-md", "src");
     assert.ok(existsSync(coreSrc), `${coreSrc} must exist`);
     assert.ok(existsSync(pluginSrc), `${pluginSrc} must exist`);
 
@@ -350,7 +350,7 @@ describe("opencode-agent-skills workspace root", () => {
     const combined = `${result.stdout}\n${result.stderr}`;
 
     // pnpm prefixes each package's output with its directory path
-    // (`packages/core test$ ...`, `packages/opencode-agent-skills test$ ...`).
+    // (`packages/core test$ ...`, `packages/opencode-agent-skills-md test$ ...`).
     // Both prefixes appearing in the output is the strongest signal that
     // the delegation reached both packages.
     assert.match(
@@ -360,7 +360,7 @@ describe("opencode-agent-skills workspace root", () => {
     );
     assert.match(
       combined,
-      /packages\/opencode-agent-skills\b/,
+      /packages\/opencode-agent-skills-md\b/,
       `pnpm test must execute the plugin package's test suite. output:\n${combined}`,
     );
   });

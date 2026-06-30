@@ -1,13 +1,13 @@
 {
-  "name": "opencode-agent-skills-workspace",
+  "name": "opencode-agent-skills-md-workspace",
   "version": "0.7.0",
   "private": true,
-  "description": "pnpm workspace root for opencode-agent-skills. The user-facing OpenCode plugin lives at packages/opencode-agent-skills and the portable engine at packages/core. This manifest exists only to wire the workspace — it has no exports of its own; consumers install one of the workspace packages directly.",
+  "description": "pnpm workspace root for opencode-agent-skills-md. The user-facing OpenCode plugin lives at packages/opencode-agent-skills-md and the portable engine at packages/core. This manifest exists only to wire the workspace — it has no exports of its own; consumers install one of the workspace packages directly.",
   "author": "Josh Thomas <josh@joshthomas.dev>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/joshuadavidthomas/opencode-agent-skills.git"
+    "url": "https://github.com/joshuadavidthomas/opencode-agent-skills-md.git"
   },
   "keywords": [
     "opencode",
@@ -27,8 +27,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "opencode-agent-skills": "workspace:*",
-    "opencode-agent-skills-core": "workspace:*",
+    "opencode-agent-skills-md": "workspace:*",
+    "opencode-agent-skills-md-core": "workspace:*",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   }

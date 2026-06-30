@@ -27,7 +27,7 @@ describe("plugin integration", () => {
   });
 
   test("discovers project and user skills deterministically", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
 
     const skills = await discoverAllSkills(workspace.projectRoot);
 

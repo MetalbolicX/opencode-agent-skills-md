@@ -5,7 +5,7 @@
 - **Install:** `pnpm install`
 - **Test:** `pnpm test` (runs `pnpm -r --no-bail test` for both packages, then the workspace contract test if all packages pass)
 - **Workspace contract test only:** `pnpm run test:workspace` (runs `node --import tsx --test tests/workspace.test.ts`)
-- **Single test file:** `pnpm -F opencode-agent-skills-core exec node --import tsx --test tests/<file>.test.ts` (or any file inside a package's `tests/`)
+- **Single test file:** `pnpm -F opencode-agent-skills-md-core exec node --import tsx --test tests/<file>.test.ts` (or any file inside a package's `tests/`)
 - **Typecheck:** `pnpm run typecheck` (delegates to `pnpm -r run typecheck`)
 - **Build:** `pnpm run build` (delegates to `pnpm -r --workspace-concurrency=1 run build`)
 
@@ -19,8 +19,8 @@
 
 ## Repo Structure
 This is a pnpm workspace with two packages:
-- `packages/core/src/` — the portable, host-agnostic skills engine (`opencode-agent-skills-core`). Discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts.
-- `packages/opencode-agent-skills/src/` — the OpenCode plugin adapter (`opencode-agent-skills`). The four skill tools, the OpenCode host implementation, and the plugin factory.
+- `packages/core/src/` — the portable, host-agnostic skills engine (`opencode-agent-skills-md-core`). Discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts.
+- `packages/opencode-agent-skills-md/src/` — the OpenCode plugin adapter (`opencode-agent-skills-md`). The four skill tools, the OpenCode host implementation, and the plugin factory.
 - Per-package tests live inside `packages/<pkg>/tests/`.
 - The repo root is a private workspace manifest (`package.json`) with no source of its own; legacy `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` were removed in favor of the per-package locations.
 

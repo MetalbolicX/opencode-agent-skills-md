@@ -69,7 +69,7 @@ const EXPECTED_TRIGGERS: Record<string, string> = {
 
 describe("External skill normalization (PR 3)", () => {
   test(`discovers exactly ${EXPECTED_SKILL_COUNT} skills under the user-level Claude skills directory`, async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -83,7 +83,7 @@ describe("External skill normalization (PR 3)", () => {
   });
 
   test("every discovered skill has a name matching the lowercase kebab-case regex", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -98,7 +98,7 @@ describe("External skill normalization (PR 3)", () => {
   });
 
   test("every discovered skill has a non-empty description", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -111,7 +111,7 @@ describe("External skill normalization (PR 3)", () => {
   });
 
   test("docsify-docs-editor is discoverable (was invisible due to uppercase name)", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -122,7 +122,7 @@ describe("External skill normalization (PR 3)", () => {
   });
 
   test("good-comments is discoverable (was invisible due to leading blank line)", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -133,7 +133,7 @@ describe("External skill normalization (PR 3)", () => {
   });
 
   test("every skill that previously had a trigger still has the same trigger after normalization", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills("/tmp", [
       { path: CLAUDE_USER_SKILLS_DIR, label: "claude-user", maxDepth: 3 },
     ]);
@@ -177,7 +177,7 @@ describe("discovery breadth — four-location priority (PR 2 R5)", () => {
   });
 
   test("discoverAllSkills surfaces skills from all four priority locations", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills(workspace.projectRoot);
 
     // .opencode/skills/ (project)
@@ -217,7 +217,7 @@ describe("discovery breadth — four-location priority (PR 2 R5)", () => {
   });
 
   test("first-match-wins: project skill shadows the same-named user skill", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const skills = await discoverAllSkills(workspace.projectRoot);
 
     assert.equal(
@@ -233,7 +233,7 @@ describe("discovery breadth — four-location priority (PR 2 R5)", () => {
   });
 
   test("duplicate discovery emits the default shadow warning", async () => {
-    const { discoverAllSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills } = await import("opencode-agent-skills-md-core");
     const warnings: string[] = [];
     const original = console.warn;
     console.warn = (msg: string) => warnings.push(msg);
@@ -275,7 +275,7 @@ describe("discovery breadth — literal-token partial trigger (PR 2 R5)", () => 
   });
 
   test("a skill whose trigger tokens are partial substrings of the query still appears", async () => {
-    const { discoverAllSkills, searchSkills } = await import("opencode-agent-skills-core");
+    const { discoverAllSkills, searchSkills } = await import("opencode-agent-skills-md-core");
 
     // Lay down a skill whose trigger is a substring of the upcoming query.
     const skillDir = path.join(workspace.projectRoot, ".opencode", "skills", "partial-trigger-skill");

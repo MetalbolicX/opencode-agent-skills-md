@@ -25,7 +25,7 @@ describe("createOpencodeSkillHost", () => {
   let fixtureDir: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-host-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-host-"));
     fixtureDir = path.join(workspace, "sub");
     await mkdir(fixtureDir, { recursive: true });
     fixtureFile = path.join(workspace, "hello.txt");

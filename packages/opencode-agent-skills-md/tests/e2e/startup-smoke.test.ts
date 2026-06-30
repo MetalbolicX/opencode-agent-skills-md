@@ -9,7 +9,7 @@ describe("plugin startup smoke", () => {
   let projectRoot: string;
 
   before(async () => {
-    projectRoot = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-e2e-"));
+    projectRoot = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-e2e-"));
     const skillDir = path.join(projectRoot, ".opencode", "skills", "smoke-skill");
     await mkdir(skillDir, { recursive: true });
     await writeFile(

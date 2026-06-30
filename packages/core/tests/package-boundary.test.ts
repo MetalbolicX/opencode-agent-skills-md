@@ -1,5 +1,5 @@
 /**
- * Package boundary contract for `opencode-agent-skills-core`.
+ * Package boundary contract for `opencode-agent-skills-md-core`.
  *
  * This is the new home for the agnostic core engine. It encodes the spec
  * scenarios from `sdd/split-core-opencode-packages/spec`:
@@ -28,13 +28,13 @@ const SRC_DIR = path.resolve(import.meta.dirname, "..", "src");
 const PKG_DIR = path.resolve(import.meta.dirname, "..");
 const REPO_ROOT = path.resolve(PKG_DIR, "..", "..");
 
-describe("opencode-agent-skills-core package boundary", () => {
+describe("opencode-agent-skills-md-core package boundary", () => {
   test("manifest declares an ESM package whose runtime excludes @opencode-ai/plugin", async () => {
     const pkgPath = path.join(PKG_DIR, "package.json");
     const raw = await readFile(pkgPath, "utf8");
     const manifest = JSON.parse(raw) as Record<string, unknown>;
 
-    assert.equal(manifest.name, "opencode-agent-skills-core", "package name");
+    assert.equal(manifest.name, "opencode-agent-skills-md-core", "package name");
     assert.equal(manifest.type, "module", "package type must be ESM");
     assert.equal(
       manifest.private,
@@ -290,15 +290,15 @@ describe("opencode-agent-skills-core package boundary", () => {
     );
   });
 
-  test("package resolves through the workspace link as opencode-agent-skills-core", async () => {
+  test("package resolves through the workspace link as opencode-agent-skills-md-core", async () => {
     // The root workspace symlinks packages/core into node_modules so the
     // package can be resolved by name from the repo root after pnpm install.
-    const resolved = require.resolve("opencode-agent-skills-core");
+    const resolved = require.resolve("opencode-agent-skills-md-core");
 
     assert.match(
       resolved,
       /[\\/]packages[\\/]core[\\/]src[\\/]index\.ts$/,
-      `expected opencode-agent-skills-core to resolve to packages/core/src/index.ts, got: ${resolved}`
+      `expected opencode-agent-skills-md-core to resolve to packages/core/src/index.ts, got: ${resolved}`
     );
 
     // Sanity check: the resolved file lives inside the repo (no stale cache).

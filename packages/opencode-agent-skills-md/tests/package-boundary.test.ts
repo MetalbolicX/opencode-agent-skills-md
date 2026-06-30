@@ -1,15 +1,15 @@
 /**
- * Package boundary contract for `opencode-agent-skills`.
+ * Package boundary contract for `opencode-agent-skills-md`.
  *
  * Encodes the spec scenarios from `sdd/split-core-opencode-packages/spec`
  * that apply to the OpenCode adapter package:
  *
  *   1. Manifest shape (name, type, private, exports, dependencies,
- *      scripts) — the workspace dep on `opencode-agent-skills-core`
+ *      scripts) — the workspace dep on `opencode-agent-skills-md-core`
  *      MUST be declared, and `@opencode-ai/plugin` MUST be a runtime
  *      dep of THIS package.
  *   2. Source structure — the four plugin files (`index.ts`, `plugin.ts`,
- *      `host.ts`, `tools.ts`) live under `packages/opencode-agent-skills/src/`
+ *      `host.ts`, `tools.ts`) live under `packages/opencode-agent-skills-md/src/`
  *      and `index.ts` re-exports the public surface (default `SkillsPlugin`,
  *      `SkillsPlugin`, `createOpencodeSkillHost`, host types).
  *   3. The four tool names (`use_skill`, `read_skill_file`, `run_skill_script`,
@@ -17,13 +17,13 @@
  *   4. Plugin sources consume the core via the workspace package, not via
  *      relative `../core` imports.
  *   5. Test files for the plugin live under
- *      `packages/opencode-agent-skills/tests/{opencode,integration,e2e}/`
+ *      `packages/opencode-agent-skills-md/tests/{opencode,integration,e2e}/`
  *      and helpers live under `tests/integration/helpers/`.
  *   6. Build is configured via `rolldown.config.js` at the package root
  *      and the plugin entry emits `dist/opencode/index.js`.
  *   7. Scripts (`build`, `test`, `typecheck`) exist at the package level.
  *
- * The test runs from inside `packages/opencode-agent-skills/tests/`, so
+ * The test runs from inside `packages/opencode-agent-skills-md/tests/`, so
  * the relative paths use `../src/`, `../..`, etc.
  */
 
@@ -40,13 +40,13 @@ const SRC_DIR = path.join(PKG_DIR, "src");
 const TESTS_DIR = path.join(PKG_DIR, "tests");
 const REPO_ROOT = path.resolve(PKG_DIR, "..", "..");
 
-describe("opencode-agent-skills package boundary", () => {
-  test("manifest declares the plugin as `opencode-agent-skills`, ESM, and private", async () => {
+describe("opencode-agent-skills-md package boundary", () => {
+  test("manifest declares the plugin as `opencode-agent-skills-md`, ESM, and private", async () => {
     const pkgPath = path.join(PKG_DIR, "package.json");
     const raw = await readFile(pkgPath, "utf8");
     const manifest = JSON.parse(raw) as Record<string, unknown>;
 
-    assert.equal(manifest.name, "opencode-agent-skills", "package name preserves the existing install surface");
+    assert.equal(manifest.name, "opencode-agent-skills-md", "package name preserves the existing install surface");
     assert.equal(manifest.type, "module", "package type must be ESM");
     assert.equal(
       manifest.private,
@@ -61,7 +61,7 @@ describe("opencode-agent-skills package boundary", () => {
 
     const dependencies = (manifest.dependencies ?? {}) as Record<string, string>;
     assert.ok(
-      "opencode-agent-skills-core" in dependencies,
+      "opencode-agent-skills-md-core" in dependencies,
       "dependencies must declare the workspace core package",
     );
     assert.ok(
@@ -104,7 +104,7 @@ describe("opencode-agent-skills package boundary", () => {
     }
   });
 
-  test("plugin sources live under packages/opencode-agent-skills/src/ with the four files", async () => {
+  test("plugin sources live under packages/opencode-agent-skills-md/src/ with the four files", async () => {
     for (const name of ["index.ts", "plugin.ts", "host.ts", "tools.ts"]) {
       const fullPath = path.join(SRC_DIR, name);
       assert.ok(existsSync(fullPath), `${name} must exist at ${fullPath}`);
@@ -182,19 +182,19 @@ describe("opencode-agent-skills package boundary", () => {
     assert.deepEqual(
       violations,
       [],
-      `expected zero relative ../core imports under packages/opencode-agent-skills/src, found: ${JSON.stringify(violations)}`,
+      `expected zero relative ../core imports under packages/opencode-agent-skills-md/src, found: ${JSON.stringify(violations)}`,
     );
 
     // Confirm the package does import the workspace core somewhere.
     const pluginSource = await readFile(path.join(SRC_DIR, "plugin.ts"), "utf8");
     assert.match(
       pluginSource,
-      /from\s+["']opencode-agent-skills-core["']/,
+      /from\s+["']opencode-agent-skills-md-core["']/,
       "plugin.ts must import from the workspace package, not the relative path",
     );
   });
 
-  test("plugin, integration, and e2e tests live under packages/opencode-agent-skills/tests/", async () => {
+  test("plugin, integration, and e2e tests live under packages/opencode-agent-skills-md/tests/", async () => {
     for (const sub of ["opencode", "integration", "e2e"]) {
       const subPath = path.join(TESTS_DIR, sub);
       assert.ok(existsSync(subPath), `tests/${sub} must exist at ${subPath}`);
@@ -220,15 +220,15 @@ describe("opencode-agent-skills package boundary", () => {
     assert.match(raw, /plugin\.mjs/, "rolldown config must emit dist/plugin.mjs");
   });
 
-  test("package resolves through the workspace link as opencode-agent-skills", async () => {
-    // The workspace symlinks packages/opencode-agent-skills into node_modules
+test("package resolves through the workspace link as opencode-agent-skills-md", async () => {
+    // The workspace symlinks packages/opencode-agent-skills-md into node_modules
     // so the package can be resolved by name after pnpm install.
-    const resolved = require.resolve("opencode-agent-skills");
+    const resolved = require.resolve("opencode-agent-skills-md");
 
     assert.match(
       resolved,
-      /[\\/]packages[\\/]opencode-agent-skills[\\/]/,
-      `expected opencode-agent-skills to resolve into packages/opencode-agent-skills, got: ${resolved}`,
+      /[\\/]packages[\\/]opencode-agent-skills-md[\\/]/,
+      `expected opencode-agent-skills-md to resolve into packages/opencode-agent-skills-md, got: ${resolved}`,
     );
 
     assert.ok(
@@ -237,7 +237,7 @@ describe("opencode-agent-skills package boundary", () => {
     );
   });
 
-  test("plugin host.ts imports the boundary types from opencode-agent-skills-core (does not redeclare them)", async () => {
+  test("plugin host.ts imports the boundary types from opencode-agent-skills-md-core (does not redeclare them)", async () => {
     // Spec R2 (Boundary Interface Location): `SkillHostClient` and
     // `SkillHostSession` SHALL be declared in the core package; the concrete
     // OpenCode implementation SHALL exist only in the plugin package. This
@@ -263,12 +263,12 @@ describe("opencode-agent-skills package boundary", () => {
       // The plugin must import the type from the workspace package, not
       // from a relative path that reaches into the core sources.
       const importPattern = new RegExp(
-        `import\\s+(?:type\\s+)?(?:\\{[^}]*\\b${typeName}\\b[^}]*\\}|${typeName})\\s+from\\s+["']opencode-agent-skills-core["']`,
+        `import\\s+(?:type\\s+)?(?:\\{[^}]*\\b${typeName}\\b[^}]*\\}|${typeName})\\s+from\\s+["']opencode-agent-skills-md-core["']`,
       );
       assert.match(
         hostSource,
         importPattern,
-        `host.ts must import ${typeName} from the workspace package "opencode-agent-skills-core"`,
+        `host.ts must import ${typeName} from the workspace package "opencode-agent-skills-md-core"`,
       );
     }
   });
@@ -305,7 +305,7 @@ describe("opencode-agent-skills package boundary", () => {
     assert.deepEqual(
       definitions,
       [path.join(SRC_DIR, "host.ts")],
-      `createOpencodeSkillHost must be defined exactly once at packages/opencode-agent-skills/src/host.ts, found at: ${definitions.join(", ")}`,
+      `createOpencodeSkillHost must be defined exactly once at packages/opencode-agent-skills-md/src/host.ts, found at: ${definitions.join(", ")}`,
     );
   });
 

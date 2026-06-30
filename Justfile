@@ -16,7 +16,7 @@ build:
 # Install dev plugin locally (project-scoped stub that re-exports the built bundle)
 install: build
     mkdir -p .opencode/plugins
-    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills/dist/opencode/index.js";\n' > .opencode/plugins/skills.js
+    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills-md/dist/opencode/index.js";\n' > .opencode/plugins/skills.js
 
 # Uninstall local plugin copy
 uninstall:

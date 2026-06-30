@@ -17,7 +17,7 @@ describe("parseSkillFile — trigger frontmatter", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-trigger-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-trigger-"));
   });
 
   after(async () => {
@@ -113,7 +113,7 @@ describe("parseSkillFile — safe frontmatter narrowing", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-narrow-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-narrow-"));
   });
 
   after(async () => {
