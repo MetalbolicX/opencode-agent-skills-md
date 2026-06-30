@@ -21,8 +21,29 @@ import {
   listSkillFiles,
   resolveSkill,
   searchSkills,
-} from "opencode-agent-skills-core";
+} from "opencode-agent-skills-md-core";
 import type { OpencodeSkillHost } from "./host";
+
+/** Escape XML special characters to prevent wrapper breakout. */
+const escapeXml = (s: string): string => {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+};
+
+/** Wrap a shell argument in single quotes and escape embedded single quotes (Bourne-shell pattern). */
+const escapeShellArg = (arg: string): string => {
+  const escaped = arg.replace(/'/g, "'\\''");
+  return "'" + escaped + "'";
+};
+
+/** @internal - exported for testing */
+export const _escapeXml = escapeXml;
+/** @internal - exported for testing */
+export const _escapeShellArg = escapeShellArg;
 
 /**
  * Portable return type for tool factory consts.
@@ -72,19 +93,19 @@ export type OnSkillLoaded = (sessionID: string, skillName: string) => void;
  * so a successful load can update host session state (e.g., the loaded-
  * skill set used to suppress duplicate match injection in `chat.message`).
  */
-export function createSkillTools(
+export const createSkillTools = (
   host: OpencodeSkillHost,
   $: PluginInput["$"],
   directory: string,
   onSkillLoaded?: OnSkillLoaded
-): SkillTools {
+): SkillTools => {
   return {
     GetAvailableSkills: GetAvailableSkills(directory),
     ReadSkillFile: ReadSkillFile(directory, host),
     RunSkillScript: RunSkillScript(directory, $),
     UseSkill: UseSkill(directory, host, onSkillLoaded),
   };
-}
+};
 
 /**
  * Resolve a skill by name, or return a "not found" message with a
@@ -108,10 +129,10 @@ export function createSkillTools(
  * call. Discovery is cheap (file-listing only) and the OS-level metadata
  * cache absorbs most of the cost.
  */
-export async function resolveSkillOrSuggest(
+export const resolveSkillOrSuggest = async (
   directory: string,
   skillName: string
-): Promise<string> {
+): Promise<string> => {
   const skillsByName = await discoverAllSkills(directory);
   const skill = resolveSkill(skillName, skillsByName);
   if (skill) return skill.name;
@@ -122,7 +143,7 @@ export async function resolveSkillOrSuggest(
     return `Skill "${skillName}" not found. Did you mean "${suggestion}"?`;
   }
   return `Skill "${skillName}" not found. Use get_available_skills to list available skills.`;
-}
+};
 
 const GetAvailableSkills = (directory: string): SkillTool => {
   return tool({
@@ -193,7 +214,7 @@ const ReadSkillFile = (directory: string, host: OpencodeSkillHost): SkillTool =>
       }
 
       // Security: ensure path doesn't escape skill directory
-      if (!isPathSafe(skill.path, args.filename)) {
+      if (!(await isPathSafe(skill.path, args.filename))) {
         return `Invalid path: cannot access files outside skill directory.`;
       }
 
@@ -203,9 +224,9 @@ const ReadSkillFile = (directory: string, host: OpencodeSkillHost): SkillTool =>
         const content = await host.client.readFile(filePath);
 
         // Inject via noReply for context persistence
-        const wrappedContent = `<skill-file skill="${skill.name}" file="${args.filename}">
+        const wrappedContent = `<skill-file skill="${escapeXml(skill.name)}" file="${escapeXml(args.filename)}">
   <metadata>
-    <directory>${skill.path}</directory>
+    <directory>${escapeXml(skill.path)}</directory>
   </metadata>
 
   <content>
@@ -268,7 +289,7 @@ const RunSkillScript = (directory: string, $: PluginInput["$"]): SkillTool => {
 
       try {
         $.cwd(skill.path);
-        const scriptArgs = args.arguments || [];
+        const scriptArgs = (args.arguments || []).map(escapeShellArg).join(' ');
         const result = await $`${script.absolutePath} ${scriptArgs}`.text();
         return result;
       } catch (error: unknown) {
@@ -313,17 +334,17 @@ const UseSkill = (
       const skillFiles = await listSkillFiles(skill.path);
 
       const scriptsXml = skill.scripts.length > 0
-        ? `\n    <scripts>\n${skill.scripts.map(s => `      <script>${s.relativePath}</script>`).join('\n')}\n    </scripts>`
+        ? `\n    <scripts>\n${skill.scripts.map(s => `      <script>${escapeXml(s.relativePath)}</script>`).join('\n')}\n    </scripts>`
         : '';
 
       const filesXml = skillFiles.length > 0
-        ? `\n    <files>\n${skillFiles.map(f => `      <file>${f}</file>`).join('\n')}\n    </files>`
+        ? `\n    <files>\n${skillFiles.map(f => `      <file>${escapeXml(f)}</file>`).join('\n')}\n    </files>`
         : '';
 
-      const skillContent = `<skill name="${skill.name}">
+      const skillContent = `<skill name="${escapeXml(skill.name)}">
   <metadata>
-    <source>${skill.label}</source>
-    <directory>${skill.path}</directory>${scriptsXml}${filesXml}
+    <source>${escapeXml(skill.label)}</source>
+    <directory>${escapeXml(skill.path)}</directory>${scriptsXml}${filesXml}
   </metadata>
 
   ${toolTranslation}

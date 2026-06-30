@@ -15,10 +15,10 @@ import {
   type Skill,
   type SkillHostContext,
   type SkillSummary,
-} from "opencode-agent-skills-core";
+} from "opencode-agent-skills-md-core";
 import { createOpencodeSkillHost, type OpencodeSkillHostClient } from "./host";
 import { createSkillTools } from "./tools";
-import { debugLog } from "opencode-agent-skills-core";
+import { debugLog } from "opencode-agent-skills-md-core";
 import {
   isChatTextPart,
   isSessionCompactedEvent,
@@ -26,26 +26,26 @@ import {
   type ChatMessageOutput,
 } from "./sdk";
 
-async function injectSkillsList(
+const injectSkillsList = async (
   directory: string,
   host: { client: OpencodeSkillHostClient },
   sessionID: string,
   context?: SkillHostContext,
   precomputed?: Map<string, Skill>,
-): Promise<void> {
+): Promise<void> => {
   const skillsByName = precomputed ?? await discoverAllSkills(directory);
   const skills = Array.from(skillsByName.values());
   if (skills.length === 0) return;
   await host.client.injectContent(sessionID, renderAvailableSkillsBlock(skills), context);
-}
+};
 
-async function maybeInjectSuperpowersBootstrap(
+const maybeInjectSuperpowersBootstrap = async (
   directory: string,
   host: { client: OpencodeSkillHostClient },
   sessionID: string,
   context?: SkillHostContext,
   precomputed?: Map<string, Skill>,
-): Promise<void> {
+): Promise<void> => {
   if (process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE !== 'true') return;
   const skillsByName = precomputed ?? await discoverAllSkills(directory);
   const usingSuperpowersSkill = skillsByName.get('using-superpowers');
@@ -63,7 +63,7 @@ ${toolMapping}
 ${skillsNamespace}
 </EXTREMELY_IMPORTANT>`;
   await host.client.injectContent(sessionID, content, ctx);
-}
+};
 
 const toolMapping = `**Tool Mapping for OpenCode:**
 - \`TodoWrite\` → \`todowrite\`
@@ -89,9 +89,9 @@ The first discovered match wins.`;
  * phrases should activate it. Skills with no trigger render exactly as
  * before (`- name: description`).
  */
-export function formatMatchedSkillsInjection(
+export const formatMatchedSkillsInjection = (
   matchedSkills: SkillSummary[]
-): string {
+): string => {
   const skillLines = matchedSkills
     .map((s) => {
       const head = `- ${s.name}: ${s.description}`;
@@ -115,7 +115,7 @@ Step 3 - ACTIVATE: Call use_skill("name") for each chosen skill
 
 IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. Do NOT announce your decision. Simply activate relevant skills or proceed directly with the request.
 </skill-evaluation-required>`;
-}
+};
 
 /**
  * Lightweight keyword matching to replace ML embeddings.
@@ -129,7 +129,7 @@ IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. 
  * so a trigger-matched skill outranks a description-matched skill at
  * the same query, but a name-matched skill still wins overall.
  */
-export function matchSkillsByKeyword(userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] {
+export const matchSkillsByKeyword = (userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] => {
   const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
   if (tokens.length === 0) return [];
 
@@ -152,7 +152,7 @@ export function matchSkillsByKeyword(userMessage: string, availableSkills: Skill
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map(s => s.skill);
-}
+};
 
 // Synchronous factory to prevent any blocking during startup
 export const SkillsPlugin: Plugin = async ({
@@ -168,14 +168,14 @@ export const SkillsPlugin: Plugin = async ({
   const setupCompleteSessions = new Set<string>();
   const loadedSkillsPerSession = new Map<string, Set<string>>();
 
-  function getLoadedSkills(sessionID: string): Set<string> {
+  const getLoadedSkills = (sessionID: string): Set<string> => {
     let set = loadedSkillsPerSession.get(sessionID);
     if (!set) {
       set = new Set<string>();
       loadedSkillsPerSession.set(sessionID, set);
     }
     return set;
-  }
+  };
 
   /**
    * Returns true when this chat.message is the first one for the session
@@ -183,7 +183,7 @@ export const SkillsPlugin: Plugin = async ({
    * skills block (which would mean the session was bootstrapped before
    * this plugin instance attached).
    */
-  async function isFirstMessageSetup(sessionID: string): Promise<boolean> {
+  const isFirstMessageSetup = async (sessionID: string): Promise<boolean> => {
     if (setupCompleteSessions.has(sessionID)) return false;
     try {
       const existing = await client.session.messages({
@@ -211,26 +211,26 @@ export const SkillsPlugin: Plugin = async ({
       debugLog("isFirstMessageSetup: failed to read existing messages", error);
     }
     return !setupCompleteSessions.has(sessionID);
-  }
+  };
 
   /** Mark the session as bootstrapped and inject the available-skills block. */
-  async function injectBootstrapSkills(
+  const injectBootstrapSkills = async (
     sessionID: string,
     skillsByName: Map<string, Skill>,
     context: SkillHostContext,
-  ): Promise<void> {
+  ): Promise<void> => {
     setupCompleteSessions.add(sessionID);
     await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context, skillsByName);
     await injectSkillsList(directory, host, sessionID, context, skillsByName);
-  }
+  };
 
   /** Run keyword matching on the user message and inject the matched-skill prompt. */
-  async function handleKeywordMatch(
+  const handleKeywordMatch = async (
     userText: string,
     sessionID: string,
     summaries: SkillSummary[],
     context: SkillHostContext,
-  ): Promise<void> {
+  ): Promise<void> => {
     if (!userText) return;
     if (summaries.length === 0) return;
 
@@ -241,7 +241,7 @@ export const SkillsPlugin: Plugin = async ({
 
     const injectionText = formatMatchedSkillsInjection(newSkills);
     await host.client.injectContent(sessionID, injectionText, context);
-  }
+  };
 
   const tools = createSkillTools(
     host,

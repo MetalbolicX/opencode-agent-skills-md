@@ -10,7 +10,7 @@
  * Used for fuzzy matching suggestions when skill/script names are not found.
  * @internal - exported for testing
  */
-export function levenshtein(a: string, b: string): number {
+export const levenshtein = (a: string, b: string): number => {
   const m = a.length;
   const n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
@@ -27,7 +27,7 @@ export function levenshtein(a: string, b: string): number {
   }
 
   return dp[m]![n]!;
-}
+};
 
 /**
  * Find the closest matching string from a list of candidates.
@@ -35,7 +35,7 @@ export function levenshtein(a: string, b: string): number {
  * Returns the best match if similarity is above 0.4 threshold, otherwise null.
  * @internal - exported for testing
  */
-export function findClosestMatch(input: string, candidates: string[]): string | null {
+export const findClosestMatch = (input: string, candidates: string[]): string | null => {
   if (candidates.length === 0) return null;
 
   const inputLower = input.toLowerCase();
@@ -72,4 +72,4 @@ export function findClosestMatch(input: string, candidates: string[]): string | 
   }
 
   return bestScore >= 0.4 ? bestMatch : null;
-}
+};

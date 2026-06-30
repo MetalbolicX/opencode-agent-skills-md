@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { parseSkillFile } from "./parse";
 import { walkDir } from "./walk";
+import { debugLog } from "./debug";
 
 /**
  * Check if a file exists in a directory and return path info.
@@ -28,11 +29,11 @@ import { walkDir } from "./walk";
  * @param filename - Name of file to look for (e.g., 'SKILL.md')
  * @returns Path info if file exists, null otherwise
  */
-export async function findFile(
+export const findFile = async (
   directory: string,
   relativePath: string,
   filename: string
-): Promise<FileDiscoveryResult | null> {
+): Promise<FileDiscoveryResult | null> => {
   const filePath = path.join(directory, filename);
   try {
     await fs.stat(filePath);
@@ -40,7 +41,7 @@ export async function findFile(
   } catch {
     return null;
   }
-}
+};
 
 /**
  * Recursively find SKILL.md files in a directory.
@@ -59,11 +60,11 @@ export async function findFile(
  * Output is sorted by `relativePath` so callers see a stable order across
  * runs regardless of the underlying `readdir` enumeration order.
  */
-export async function findSkillsRecursive(
+export const findSkillsRecursive = async (
   baseDir: string,
   label: SkillLabel,
   maxDepth: number = 3
-): Promise<LabeledDiscoveryResult[]> {
+): Promise<LabeledDiscoveryResult[]> => {
   const results: LabeledDiscoveryResult[] = [];
 
   try {
@@ -84,10 +85,12 @@ export async function findSkillsRecursive(
         results.push({ ...found, label });
       }
     });
-  } catch { }
+  } catch (error) {
+    debugLog("findSkillsRecursive: cannot access baseDir", baseDir, error);
+  }
 
   return results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-}
+};
 
 /**
  * Default recursion depth for the four priority discovery roots.
@@ -111,14 +114,14 @@ const DEFAULT_DISCOVERY_MAX_DEPTH = 3;
  *
  * No shadowing - unique names only. First match wins, duplicates are warned.
  */
-export function getDefaultOpencodeRoots(directory: string): DiscoveryPath[] {
+export const getDefaultOpencodeRoots = (directory: string): DiscoveryPath[] => {
   return [
     { path: path.join(directory, '.opencode', 'skills'), label: 'project', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
     { path: path.join(directory, '.claude', 'skills'), label: 'claude-project', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
     { path: path.join(homedir(), '.config', 'opencode', 'skills'), label: 'user', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH },
     { path: path.join(homedir(), '.claude', 'skills'), label: 'claude-user', maxDepth: DEFAULT_DISCOVERY_MAX_DEPTH }
   ];
-}
+};
 
 /**
  * Default callback for shadowed skill names. Emits a `console.warn` that
@@ -148,11 +151,11 @@ export const defaultOnDuplicate = (
  *   `defaultOnDuplicate`. The first-discovered skill wins; the duplicate
  *   (second one encountered) is passed to the callback but never stored.
  */
-export async function discoverAllSkills(
+export const discoverAllSkills = async (
   directory: string,
   roots: DiscoveryPath[] = getDefaultOpencodeRoots(directory),
   onDuplicate: (existing: Skill, duplicate: Skill) => void = defaultOnDuplicate
-): Promise<Map<string, Skill>> {
+): Promise<Map<string, Skill>> => {
   const allResults: LabeledDiscoveryResult[] = [];
   for (const { path: baseDir, label, maxDepth } of roots) {
     allResults.push(...await findSkillsRecursive(baseDir, label, maxDepth));
@@ -170,16 +173,16 @@ export async function discoverAllSkills(
   }
 
   return skillsByName;
-}
+};
 
 /**
  * Resolve a skill by name, handling namespace prefixes.
  * Supports: "skill-name", "project:skill-name", "user:skill-name", etc.
  */
-export function resolveSkill(
+export const resolveSkill = (
   skillName: string,
   skillsByName: Map<string, Skill>
-): Skill | null {
+): Skill | null => {
   if (skillName.includes(':')) {
     const [namespace, name] = skillName.split(':');
     for (const skill of skillsByName.values()) {
@@ -190,16 +193,16 @@ export function resolveSkill(
     return null;
   }
   return skillsByName.get(skillName) || null;
-}
+};
 
 /**
  * Recursively list all files in a directory, returning relative paths.
  * Excludes SKILL.md since it's already loaded as the main content.
  */
-export async function listSkillFiles(skillPath: string, maxDepth: number = 3): Promise<string[]> {
+export const listSkillFiles = async (skillPath: string, maxDepth: number = 3): Promise<string[]> => {
   const files: string[] = [];
 
-  async function recurse(dir: string, depth: number, relPath: string) {
+  const recurse = async (dir: string, depth: number, relPath: string) => {
     if (depth > maxDepth) return;
 
     try {
@@ -216,14 +219,18 @@ export async function listSkillFiles(skillPath: string, maxDepth: number = 3): P
           } else if (stats.isFile() && entry.name !== 'SKILL.md') {
             files.push(newRelPath);
           }
-        } catch { }
+        } catch (error) {
+          debugLog("listSkillFiles: cannot stat", fullPath, error);
+        }
       }
-    } catch { }
-  }
+    } catch (error) {
+      debugLog("listSkillFiles: cannot read directory", dir, error);
+    }
+  };
 
   await recurse(skillPath, 0, '');
   return files.sort();
-}
+};
 
 /**
  * Get summaries of all available skills (name, description, trigger).
@@ -237,11 +244,11 @@ export async function listSkillFiles(skillPath: string, maxDepth: number = 3): P
  * @param directory - Project directory to discover skills from
  * @returns Array of skill summaries
  */
-export async function getSkillSummaries(directory: string): Promise<Array<{ name: string; description: string; trigger?: string }>> {
+export const getSkillSummaries = async (directory: string): Promise<Array<{ name: string; description: string; trigger?: string }>> => {
   const skillsByName = await discoverAllSkills(directory);
   return Array.from(skillsByName.values()).map(skill => ({
     name: skill.name,
     description: skill.description,
     trigger: skill.trigger,
   }));
-}
+};

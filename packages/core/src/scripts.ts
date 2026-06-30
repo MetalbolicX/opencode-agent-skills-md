@@ -35,7 +35,7 @@ const SCRIPT_SKIP_DIRS: ReadonlySet<string> = new Set([
  * Output is sorted by `relativePath` so callers see a stable order
  * regardless of the underlying `readdir` enumeration order.
  */
-export async function findScripts(skillPath: string, maxDepth: number = 10): Promise<Script[]> {
+export const findScripts = async (skillPath: string, maxDepth: number = 10): Promise<Script[]> => {
   const scripts: Script[] = [];
 
   await walkDir(skillPath, maxDepth, async (entry) => {
@@ -56,12 +56,24 @@ export async function findScripts(skillPath: string, maxDepth: number = 10): Pro
   }, { skipDirs: SCRIPT_SKIP_DIRS });
 
   return scripts.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-}
+};
 
 /**
- * Check if a path is safely within a base directory (no escape via ..)
+ * Check if a path is safely within a base directory (no escape via .. or symlink).
+ *
+ * Uses fs.realpath to canonicalize both paths before comparing, which closes
+ * the symlink-escape attack: a symlink inside the skill directory that points
+ * outside will have its real path resolved and fail the prefix check.
+ *
+ * @returns Promise<boolean> — true if the resolved real path is within basePath
  */
-export function isPathSafe(basePath: string, requestedPath: string): boolean {
+export const isPathSafe = async (basePath: string, requestedPath: string): Promise<boolean> => {
   const resolved = path.resolve(basePath, requestedPath);
-  return resolved.startsWith(basePath + path.sep) || resolved === basePath;
-}
+  try {
+    const resolvedReal = await fs.realpath(resolved);
+    const baseReal = await fs.realpath(basePath);
+    return resolvedReal.startsWith(baseReal + path.sep) || resolvedReal === baseReal;
+  } catch {
+    return false;
+  }
+};

@@ -9,8 +9,8 @@
  * The env var is checked on every call (not cached at module load) so
  * tests can toggle it without re-importing the module.
  */
-export function debugLog(...args: unknown[]): void {
+export const debugLog = (...args: unknown[]): void => {
   if (!process.env.OPENCODE_AGENT_SKILLS_DEBUG) return;
   // eslint-disable-next-line no-console
-  console.error("[opencode-agent-skills]", ...args);
-}
+  console.error("[opencode-agent-skills-md]", ...args);
+};

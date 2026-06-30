@@ -63,23 +63,23 @@ export interface WalkOptions {
  * yields nothing. Per-entry failures (read, stat, or a throwing visitor)
  * are likewise isolated to the offending entry.
  */
-export async function walkDir(
+export const walkDir = async (
   baseDir: string,
   maxDepth: number,
   visitor: (entry: Dirent, currentDepth: number) => void | Promise<void>,
   options: WalkOptions = {}
-): Promise<void> {
+): Promise<void> => {
   const skipDirs = options.skipDirs;
   await walk(baseDir, 0, maxDepth, visitor, skipDirs);
-}
+};
 
-async function walk(
+const walk = async (
   dir: string,
   depth: number,
   maxDepth: number,
   visitor: (entry: Dirent, currentDepth: number) => void | Promise<void>,
   skipDirs: ReadonlySet<string> | undefined
-): Promise<void> {
+): Promise<void> => {
   if (depth > maxDepth) return;
 
   let entries: Dirent[];
@@ -106,4 +106,4 @@ async function walk(
       await walk(path.join(dir, entry.name), depth + 1, maxDepth, visitor, skipDirs);
     }
   }
-}
+};
