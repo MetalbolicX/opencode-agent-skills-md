@@ -8,7 +8,7 @@ This delta strengthens `core-decoupling` R3 and R5 after the refactor introduced
 
 ### Requirement: Backward-Compatible Root Export (R3)
 
-Importing `opencode-agent-skills` (the package root) SHALL return the OpenCode plugin with the same shape and behavior as before this change. The four tool names (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) SHALL resolve. Additionally, `use_skill` SHALL visibly load a skill: the `onSkillLoaded` callback registered with `createSkillTools` SHALL fire exactly once per successful load per session, the loaded skill's `SKILL.md` content SHALL be injected into the agent context exactly once per session per skill, and the host SHALL observe the loaded-skill state update (TUI icon visible). The callback SHALL be threaded from `src/opencode/plugin.ts` → `createSkillTools` → `UseSkill`.
+Importing `opencode-agent-skills-md` (the package root) SHALL return the OpenCode plugin with the same shape and behavior as before this change. The four tool names (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) SHALL resolve. Additionally, `use_skill` SHALL visibly load a skill: the `onSkillLoaded` callback registered with `createSkillTools` SHALL fire exactly once per successful load per session, the loaded skill's `SKILL.md` content SHALL be injected into the agent context exactly once per session per skill, and the host SHALL observe the loaded-skill state update (TUI icon visible). The callback SHALL be threaded from `src/opencode/plugin.ts` → `createSkillTools` → `UseSkill`.
 
 (Previously: only asserted the four tool names resolve; did not cover observable skill loading or session-level dedupe.)
 

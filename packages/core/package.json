@@ -1,8 +1,8 @@
 {
-  "name": "opencode-agent-skills-core",
+  "name": "opencode-agent-skills-md-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Portable skills engine for opencode-agent-skills. Host-agnostic discovery, parsing, search, and host-boundary contracts.",
+  "description": "Portable skills engine for opencode-agent-skills-md. Host-agnostic discovery, parsing, search, and host-boundary contracts.",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

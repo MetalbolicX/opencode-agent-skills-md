@@ -46,8 +46,8 @@ Chain strategy: stacked-to-main
 
 - [x] 3.1 Add `exports` map to `package.json` with `.` and `./core` subpaths (each with `types` + `import` + `default` conditions) and point `main` at `dist/opencode/index.js`.
 - [x] 3.2 Rewrite `rolldown.config.js` to multi-entry emit `dist/opencode/index.js` and `dist/core/index.js`; add `tsconfig.build.json` for `tsc --emitDeclarationOnly` so `.d.ts` files travel with the JS chunks.
-- [x] 3.3 Add `tests/core/subpath.test.ts` — resolves `opencode-agent-skills/core` via the package's exports field, asserts the portable API is exported, and walks the built chunk to prove no `@opencode-ai/plugin` reference leaks in.
-- [x] 3.4 Add `tests/opencode/subpath.test.ts` — resolves `opencode-agent-skills` (root) via the exports field, asserts the default export + `SkillsPlugin` are the same factory function, and proves module load is side-effect safe.
+- [x] 3.3 Add `tests/core/subpath.test.ts` — resolves `opencode-agent-skills-md/core` via the package's exports field, asserts the portable API is exported, and walks the built chunk to prove no `@opencode-ai/plugin` reference leaks in.
+- [x] 3.4 Add `tests/opencode/subpath.test.ts` — resolves `opencode-agent-skills-md` (root) via the exports field, asserts the default export + `SkillsPlugin` are the same factory function, and proves module load is side-effect safe.
 - [x] 3.5 Add `pretest` hook that runs `pnpm run build` first so the subpath tests always run against fresh built artifacts.
 - [x] 3.6 Remove `src/plugin.ts` compat shim (now redundant); build entry is `src/opencode/index.ts` directly. A legacy `dist/plugin.mjs` alias is preserved via a third rolldown entry so any downstream consumer still importing the old path keeps working.
 - [x] 3.7 Update `README.md` with a "Programmatic subpath exports" section documenting both subpaths, the intended consumer (harness authors), and a code example using the core.

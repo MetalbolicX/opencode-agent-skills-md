@@ -4,7 +4,7 @@ import { defineConfig } from 'rolldown';
  * Plugin package build — emits `dist/opencode/index.js` (the OpenCode host
  * adapter + default-export plugin factory).
  *
- * The core engine (`opencode-agent-skills-core`) is consumed as a workspace
+ * The core engine (`opencode-agent-skills-md-core`) is consumed as a workspace
  * package dependency, so it is treated as an external — the plugin bundle
  * keeps a runtime import for it instead of inlining the sources.
  */
@@ -16,7 +16,7 @@ export default defineConfig({
   },
   external: [
     '@opencode-ai/plugin',
-    'opencode-agent-skills-core',
+    'opencode-agent-skills-md-core',
     'node:fs',
     'node:fs/promises',
     'node:path',

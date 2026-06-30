@@ -40,7 +40,7 @@ describe("GetAvailableSkills trigger rendering (R5)", () => {
   const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-tools-trigger-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-tools-trigger-"));
     const projectRoot = path.join(workspace, ".opencode", "skills");
     await mkdir(path.join(projectRoot, "with-trigger"), { recursive: true });
     await mkdir(path.join(projectRoot, "no-trigger"), { recursive: true });
@@ -154,7 +154,7 @@ describe("resolveSkillOrSuggest", () => {
   const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-resolver-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-resolver-"));
     const projectRoot = path.join(workspace, ".opencode", "skills");
     await mkdir(path.join(projectRoot, "alpha"), { recursive: true });
     await mkdir(path.join(projectRoot, "beta"), { recursive: true });

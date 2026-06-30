@@ -5,7 +5,7 @@
  * (the host adapter, the test suite, and external harnesses) can
  * import everything from a single path:
  *
- *     import { discoverAllSkills, resolveSkill, type Skill } from "opencode-agent-skills/core";
+ *     import { discoverAllSkills, resolveSkill, type Skill } from "opencode-agent-skills-md/core";
  *
  * The core has zero runtime dependency on any host SDK. Host adapters
  * supply the host-boundary types and client implementations.

@@ -5,33 +5,33 @@ import { describe, test } from "node:test";
 const require = createRequire(import.meta.url);
 
 /**
- * Package boundary smoke test for `opencode-agent-skills`.
+ * Package boundary smoke test for `opencode-agent-skills-md`.
  *
- * The plugin package now lives at `packages/opencode-agent-skills/` and is
- * consumed via the workspace link `opencode-agent-skills`. Three
+ * The plugin package now lives at `packages/opencode-agent-skills-md/` and is
+ * consumed via the workspace link `opencode-agent-skills-md`. Three
  * guarantees pinned by this test:
  *
  *   1. The package's `exports` field resolves `.` to the plugin entry
  *      under the package's own `src/` directory (via the workspace link
- *      into `packages/opencode-agent-skills/`).
+ *      into `packages/opencode-agent-skills-md/`).
  *   2. Importing the entry is safe at module-load time — it does not
  *      instantiate anything, it just re-exports the plugin factory.
  *   3. The default export and the `SkillsPlugin` named export are both
  *      the plugin factory function consumed by OpenCode.
  */
-describe("opencode-agent-skills package root export", () => {
-  test("resolves . via the workspace link to packages/opencode-agent-skills/src/index.ts", () => {
-    const resolved = require.resolve("opencode-agent-skills");
+describe("opencode-agent-skills-md package root export", () => {
+  test("resolves . via the workspace link to packages/opencode-agent-skills-md/src/index.ts", () => {
+    const resolved = require.resolve("opencode-agent-skills-md");
 
     assert.match(
       resolved,
-      /[\\/]packages[\\/]opencode-agent-skills[\\/]src[\\/]index\.ts$/,
-      `expected . to resolve under packages/opencode-agent-skills/src, got: ${resolved}`,
+      /[\\/]packages[\\/]opencode-agent-skills-md[\\/]src[\\/]index\.ts$/,
+      `expected . to resolve under packages/opencode-agent-skills-md/src, got: ${resolved}`,
     );
   });
 
   test("default export is the SkillsPlugin factory function", async () => {
-    const entryPath = require.resolve("opencode-agent-skills");
+    const entryPath = require.resolve("opencode-agent-skills-md");
     // Dynamic import is intentional: it proves module load is side-effect
     // safe (the factory itself is not invoked).
     const mod = await import(entryPath);
@@ -60,7 +60,7 @@ describe("opencode-agent-skills package root export", () => {
     assert.doesNotThrow(() => {
       // Re-resolve without invoking; the spec only requires that the
       // entry module be importable in isolation.
-      require.resolve("opencode-agent-skills");
+      require.resolve("opencode-agent-skills-md");
     });
   });
 });

@@ -15,7 +15,7 @@ describe("getSkillSummaries trigger passthrough (PR 2)", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-summaries-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-summaries-"));
     const projectRoot = path.join(workspace, ".opencode", "skills");
     await mkdir(path.join(projectRoot, "with-trigger"), { recursive: true });
     await mkdir(path.join(projectRoot, "no-trigger"), { recursive: true });
@@ -90,7 +90,7 @@ describe("walkDir (R2 shared walker)", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-walk-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-walk-"));
     await mkdir(path.join(workspace, "visible"), { recursive: true });
     await mkdir(path.join(workspace, ".hidden"), { recursive: true });
     await mkdir(path.join(workspace, "node_modules", "dep"), { recursive: true });
@@ -169,7 +169,7 @@ describe("findSkillsRecursive on walkDir (R2)", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-fsr-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-fsr-"));
     const root = path.join(workspace, "skills");
     await mkdir(path.join(root, "alpha"), { recursive: true });
     await mkdir(path.join(root, "beta", "nested"), { recursive: true });
@@ -261,7 +261,7 @@ describe("findScripts on walkDir (R2)", () => {
   let workspace: string;
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-fs-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-fs-"));
     await mkdir(path.join(workspace, "scripts", "bin"), { recursive: true });
     await mkdir(path.join(workspace, "scripts", "__pycache__"), { recursive: true });
     await mkdir(path.join(workspace, "scripts", ".venv", "bin"), { recursive: true });

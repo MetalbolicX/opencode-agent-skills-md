@@ -9,14 +9,14 @@ const PKG_ENTRY = path.resolve(import.meta.dirname, "..", "src", "index.ts");
 const SRC_DIR = path.resolve(import.meta.dirname, "..", "src");
 
 /**
- * Runtime entry resolution test for the `opencode-agent-skills-core` package.
+ * Runtime entry resolution test for the `opencode-agent-skills-md-core` package.
  *
  * This is the migrated form of the `opencode-agent-skills/core` subpath test
  * (see spec scenario "plugin-only dependency is blocked from core" in
  * `sdd/split-core-opencode-packages/spec`). The reusable engine is now
  * published under its own package name, so the assertions are renamed:
  *
- *   1. `require.resolve("opencode-agent-skills-core")` lands on the
+ *   1. `require.resolve("opencode-agent-skills-md-core")` lands on the
  *      package's runtime entry (`packages/core/src/index.ts`).
  *   2. Importing the entry exposes the public API listed in
  *      `packages/core/src/index.ts`.
@@ -24,14 +24,14 @@ const SRC_DIR = path.resolve(import.meta.dirname, "..", "src");
  *      to `@opencode-ai/plugin` — proven by walking the package's `src/`
  *      directory the same way the agnostic test does.
  */
-describe("opencode-agent-skills-core runtime entry", () => {
-  test("resolves opencode-agent-skills-core to packages/core/src/index.ts", () => {
-    const resolved = require.resolve("opencode-agent-skills-core");
+describe("opencode-agent-skills-md-core runtime entry", () => {
+  test("resolves opencode-agent-skills-md-core to packages/core/src/index.ts", () => {
+    const resolved = require.resolve("opencode-agent-skills-md-core");
 
     assert.match(
       resolved,
       /[\\/]packages[\\/]core[\\/]src[\\/]index\.ts$/,
-      `expected opencode-agent-skills-core to resolve to packages/core/src/index.ts, got: ${resolved}`
+      `expected opencode-agent-skills-md-core to resolve to packages/core/src/index.ts, got: ${resolved}`
     );
 
     // Sanity: the entry file exists on disk and matches the resolved path.
@@ -39,7 +39,7 @@ describe("opencode-agent-skills-core runtime entry", () => {
   });
 
   test("exposes the portable core API as runtime exports", async () => {
-    const core = await import("opencode-agent-skills-core");
+    const core = await import("opencode-agent-skills-md-core");
 
     assert.equal(typeof core.discoverAllSkills, "function");
     assert.equal(typeof core.parseSkillFile, "function");

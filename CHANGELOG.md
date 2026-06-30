@@ -13,34 +13,34 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 ### Removed - for now removed features
 ### Fixed - for any bug fixes
 ### Security - in case of vulnerabilities
-[${version}]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v${version}
+[${version}]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v${version}
 -->
 
 ## [Unreleased]
 
 ### Changed
 
-- **Workspace split**: the repository now publishes two packages from a single pnpm workspace. The reusable, host-agnostic skills engine lives at [`opencode-agent-skills-core`](packages/core) and the OpenCode plugin adapter lives at [`opencode-agent-skills`](packages/opencode-agent-skills). The plugin package now consumes the core engine through a workspace dependency instead of relative source imports. The repo root is a private workspace manifest whose `build`, `test`, and `typecheck` scripts delegate to both packages via `pnpm -r`.
+- **Workspace split**: the repository now publishes two packages from a single pnpm workspace. The reusable, host-agnostic skills engine lives at [`opencode-agent-skills-md-core`](packages/core) and the OpenCode plugin adapter lives at [`opencode-agent-skills-md`](packages/opencode-agent-skills-md). The plugin package now consumes the core engine through a workspace dependency instead of relative source imports. The repo root is a private workspace manifest whose `build`, `test`, and `typecheck` scripts delegate to both packages via `pnpm -r`.
 
 ### Added
 
-- The `opencode-agent-skills-core` package is published as a standalone ESM module so custom harnesses, CLIs, and test fixtures can embed the skills engine without pulling `@opencode-ai/plugin`. Consumers implement the `SkillHostClient` / `SkillHostSession` boundary contracts declared in `packages/core/src/types.ts` against their own host.
+- The `opencode-agent-skills-md-core` package is published as a standalone ESM module so custom harnesses, CLIs, and test fixtures can embed the skills engine without pulling `@opencode-ai/plugin`. Consumers implement the `SkillHostClient` / `SkillHostSession` boundary contracts declared in `packages/core/src/types.ts` against their own host.
 
 ### Removed
 
-- The legacy `opencode-agent-skills/core` subpath export is gone. Replace imports of `opencode-agent-skills/core` with `opencode-agent-skills-core`. The legacy root `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` have also been removed; each now lives inside the owning workspace package.
+- The legacy `opencode-agent-skills-md/core` subpath export is gone. Replace imports of `opencode-agent-skills-md/core` with `opencode-agent-skills-md-core`. The legacy root `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` have also been removed; each now lives inside the owning workspace package.
 
 ## [0.7.0]
 
 ### Added
 
-- Added `HF_ENDPOINT` support for configuring a Hugging Face mirror for embedding model downloads ([#38](https://github.com/joshuadavidthomas/opencode-agent-skills/pull/38), thanks [@pablon](https://github.com/pablon)).
+- Added `HF_ENDPOINT` support for configuring a Hugging Face mirror for embedding model downloads ([#38](https://github.com/joshuadavidthomas/opencode-agent-skills-md/pull/38), thanks [@pablon](https://github.com/pablon)).
 
 ## [0.6.5]
 
 ### Fixed
 
-- Fixed crash on macOS ARM64 (Apple Silicon) caused by `onnxruntime-node@1.21.0` segfault regression by pinning to 1.20.1 ([#31](https://github.com/joshuadavidthomas/opencode-agent-skills/issues/31), [microsoft/onnxruntime#24096](https://github.com/microsoft/onnxruntime/issues/24096))
+- Fixed crash on macOS ARM64 (Apple Silicon) caused by `onnxruntime-node@1.21.0` segfault regression by pinning to 1.20.1 ([#31](https://github.com/joshuadavidthomas/opencode-agent-skills-md/issues/31), [microsoft/onnxruntime#24096](https://github.com/microsoft/onnxruntime/issues/24096))
 
 ## [0.6.4]
 
@@ -78,7 +78,7 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 - Semantic skill matching: after the initial skills list injection, subsequent messages are matched against skill descriptions using local embeddings
 - Added `@huggingface/transformers` dependency for local embedding generation (quantized all-MiniLM-L6-v2)
 - When a message matches available skills, injects a 3-step evaluation prompt (EVALUATE → DECIDE → ACTIVATE) to encourage skill loading (inspired by [@spences10](https://github.com/spences10)'s [blog post](https://scottspence.com/posts/how-to-make-claude-code-skills-activate-reliably))
-- Disk-cached embeddings for low-latency matching (~/.cache/opencode-agent-skills/)
+- Disk-cached embeddings for low-latency matching (~/.cache/opencode-agent-skills-md/)
 - Session cleanup on `session.deleted` event
 
 ## [0.5.0]
@@ -159,20 +159,20 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Josh Thomas <josh@joshthomas.dev> (maintainer)
 
-[unreleased]: https://github.com/joshuadavidthomas/opencode-agent-skills/compare/v0.7.0...HEAD
-[0.1.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.1.0
-[0.2.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.2.0
-[0.3.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.3.0
-[0.3.1]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.3.1
-[0.3.2]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.3.2
-[0.3.3]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.3.3
-[0.4.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.4.0
-[0.4.1]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.4.1
-[0.5.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.5.0
-[0.6.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.0
-[0.6.1]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.1
-[0.6.2]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.2
-[0.6.3]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.3
-[0.6.4]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.4
-[0.6.5]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.6.5
-[0.7.0]: https://github.com/joshuadavidthomas/opencode-agent-skills/releases/tag/v0.7.0
+[unreleased]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/compare/v0.7.0...HEAD
+[0.1.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.1.0
+[0.2.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.2.0
+[0.3.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.0
+[0.3.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.1
+[0.3.2]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.2
+[0.3.3]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.3
+[0.4.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.4.0
+[0.4.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.4.1
+[0.5.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.5.0
+[0.6.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.0
+[0.6.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.1
+[0.6.2]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.2
+[0.6.3]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.3
+[0.6.4]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.4
+[0.6.5]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.5
+[0.7.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.7.0

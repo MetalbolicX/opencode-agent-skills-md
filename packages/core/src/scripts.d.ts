@@ -11,6 +11,7 @@ import type { Script } from "./types";
  */
 export declare function findScripts(skillPath: string, maxDepth?: number): Promise<Script[]>;
 /**
- * Check if a path is safely within a base directory (no escape via ..)
+ * Check if a path is safely within a base directory (no escape via .. or symlink).
+ * Uses fs.realpath to canonicalize paths before comparing.
  */
-export declare function isPathSafe(basePath: string, requestedPath: string): boolean;
+export declare function isPathSafe(basePath: string, requestedPath: string): Promise<boolean>;

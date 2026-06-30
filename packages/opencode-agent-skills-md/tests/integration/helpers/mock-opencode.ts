@@ -38,7 +38,7 @@ export interface ShellRecorder {
 }
 
 export async function createFixtureWorkspace(): Promise<FixtureWorkspace> {
-  const root = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-fixture-"));
+  const root = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-fixture-"));
   const projectRoot = path.join(root, "project");
   const homeRoot = path.join(root, "home");
 

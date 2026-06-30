@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This spec defines the boundary between the portable core skills engine and the OpenCode-specific adapter in the `opencode-agent-skills` package. It guarantees that the core is reusable by any host while OpenCode users see no behavior change. This domain is introduced by the `skills-core-decouple` change; there is no prior baseline to delta against, so this file is the initial full definition.
+This spec defines the boundary between the portable core skills engine and the OpenCode-specific adapter in the `opencode-agent-skills-md` package. It guarantees that the core is reusable by any host while OpenCode users see no behavior change. This domain is introduced by the `skills-core-decouple` change; there is no prior baseline to delta against, so this file is the initial full definition.
 
 ## Requirements
 
@@ -16,11 +16,11 @@ The interfaces `SkillHostClient` and `SkillHostSession` SHALL be declared in `sr
 
 ### Requirement: Backward-Compatible Root Export (R3)
 
-Importing `opencode-agent-skills` (the package root) SHALL return the OpenCode plugin with the same shape and behavior as before this change. A smoke test that loads the package and resolves the four tool names (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) SHALL pass.
+Importing `opencode-agent-skills-md` (the package root) SHALL return the OpenCode plugin with the same shape and behavior as before this change. A smoke test that loads the package and resolves the four tool names (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) SHALL pass.
 
 ### Requirement: Framework-Agnostic Subpath Export (R4)
 
-Importing `opencode-agent-skills/core` SHALL resolve to the core modules only. A smoke import of the subpath SHALL NOT trigger any side effect, top-level await, or transitive import from `@opencode-ai/plugin`.
+Importing `opencode-agent-skills-md/core` SHALL resolve to the core modules only. A smoke import of the subpath SHALL NOT trigger any side effect, top-level await, or transitive import from `@opencode-ai/plugin`.
 
 ### Requirement: Discovery Semantics Preservation (R5)
 
@@ -54,7 +54,7 @@ The four tool names, their parameter shapes, and their user-visible error messag
 
 ### Scenario: subpath export does not pull in the OpenCode SDK
 
-- GIVEN a consumer imports `opencode-agent-skills/core` in a fresh process
+- GIVEN a consumer imports `opencode-agent-skills-md/core` in a fresh process
 - WHEN the import resolves and the module graph is recorded
 - THEN no module under `node_modules/@opencode-ai/plugin` appears in the resolved graph
 - AND no side effect from the SDK runs at import time

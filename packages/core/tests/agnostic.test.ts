@@ -22,7 +22,7 @@ describe("agnostic core", () => {
   const coreDir = path.resolve(import.meta.dirname, "..", "src");
 
   before(async () => {
-    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-core-agnostic-"));
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-core-agnostic-"));
     const skillDir = path.join(workspace, ".opencode", "skills", "foo");
     await mkdir(skillDir, { recursive: true });
     await writeFile(
@@ -116,7 +116,7 @@ describe("agnostic core", () => {
   });
 
   test("discovers a SKILL.md placed at the root of a discovery baseDir", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-root-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-root-"));
     const opencodeSkills = path.join(rootDir, ".opencode", "skills");
     await mkdir(opencodeSkills, { recursive: true });
     await writeFile(
@@ -148,7 +148,7 @@ describe("agnostic core", () => {
   });
 
   test("root-level SKILL.md wins the shadowing tie-break over a same-name subdir", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-root-tie-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-root-tie-"));
     const opencodeSkills = path.join(rootDir, ".opencode", "skills");
     await mkdir(opencodeSkills, { recursive: true });
 
@@ -194,7 +194,7 @@ describe("agnostic core", () => {
   });
 
   test("discovers a nested skill at depth 3 under .claude/skills (maxDepth=3)", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-depth-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-depth-"));
     const deepDir = path.join(rootDir, ".claude", "skills", "foo", "bar", "baz");
     await mkdir(deepDir, { recursive: true });
     await writeFile(
@@ -223,7 +223,7 @@ describe("agnostic core", () => {
   });
 
   test("does not discover skills beyond depth 3 (maxDepth cap preserved)", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-deep-cap-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-deep-cap-"));
     const tooDeep = path.join(rootDir, ".claude", "skills", "a", "b", "c", "d", "e");
     await mkdir(tooDeep, { recursive: true });
     await writeFile(
@@ -250,8 +250,8 @@ describe("agnostic core", () => {
   });
 
   test("onDuplicate callback fires when two roots provide the same skill name", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-dup-root-"));
-    const homeDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-dup-home-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-dup-root-"));
+    const homeDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-dup-home-"));
     const previousHome = process.env.HOME;
     process.env.HOME = homeDir;
 
@@ -312,7 +312,7 @@ describe("agnostic core", () => {
   });
 
   test("onDuplicate callback is NOT called when all discovered skills are unique", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-uniq-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-uniq-"));
     const opencodeSkills = path.join(rootDir, ".opencode", "skills", "alpha");
     await mkdir(opencodeSkills, { recursive: true });
     await writeFile(

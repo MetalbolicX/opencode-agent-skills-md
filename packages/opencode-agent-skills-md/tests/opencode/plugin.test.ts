@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
-import type { SkillSummary } from "opencode-agent-skills-core";
+import type { SkillSummary } from "opencode-agent-skills-md-core";
 import {
   createFixtureWorkspace,
   createMockOpencodeClient,
@@ -498,7 +498,7 @@ describe("PR 3 diagnostics + SDK shapes (R6 + R8)", () => {
   });
 
   test("debugLog emits to stderr when OPENCODE_AGENT_SKILLS_DEBUG is set", async () => {
-    const { debugLog } = await import("opencode-agent-skills-core");
+    const { debugLog } = await import("opencode-agent-skills-md-core");
     process.env.OPENCODE_AGENT_SKILLS_DEBUG = "1";
     const spy = mock.method(console, "error", () => {});
     try {
@@ -507,7 +507,7 @@ describe("PR 3 diagnostics + SDK shapes (R6 + R8)", () => {
       const firstCall = spy.mock.calls[0];
       assert.ok(firstCall, "spy captured a call");
       const args = firstCall.arguments;
-      assert.match(String(args[0]), /opencode-agent-skills/, "debug prefix is present");
+      assert.match(String(args[0]), /opencode-agent-skills-md/, "debug prefix is present");
       assert.equal(args[1], "test-context");
     } finally {
       spy.mock.restore();
@@ -515,7 +515,7 @@ describe("PR 3 diagnostics + SDK shapes (R6 + R8)", () => {
   });
 
   test("debugLog stays silent when OPENCODE_AGENT_SKILLS_DEBUG is unset", async () => {
-    const { debugLog } = await import("opencode-agent-skills-core");
+    const { debugLog } = await import("opencode-agent-skills-md-core");
     delete process.env.OPENCODE_AGENT_SKILLS_DEBUG;
     const spy = mock.method(console, "error", () => {});
     try {
