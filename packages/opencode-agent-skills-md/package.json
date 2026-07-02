@@ -16,6 +16,9 @@
     "dist",
     "src"
   ],
+  "bin": {
+    "oas": "./dist/cli.mjs"
+  },
   "scripts": {
     "build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json",
     "pretest": "npm run build",
