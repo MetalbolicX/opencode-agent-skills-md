@@ -316,6 +316,25 @@ describe("parseJsonc", () => {
     assert.throws(() => parseJsonc('"just a string"'), /must be a JSON object/i);
     assert.throws(() => parseJsonc("[1,2,3]"), /must be a JSON object/i);
   });
+
+  test("preserves comma inside a string value before closing brace", () => {
+    const raw = '{"doc":"keep ,} inside string","plugin":["a",]}';
+    assert.deepEqual(parseJsonc(raw), { doc: "keep ,} inside string", plugin: ["a"] });
+  });
+
+  test("preserves comma inside a string value before closing bracket", () => {
+    const raw = '{"doc":"keep ,] inside string","list":[1,2,],}';
+    assert.deepEqual(parseJsonc(raw), { doc: "keep ,] inside string", list: [1, 2] });
+  });
+
+  test("preserves mixed patterns: string with comma-bracket, structural trailing commas", () => {
+    const raw = `{
+      "a": "has ,}",
+      "b": ["x", "y ,]",],
+      "c": {"d":1,}
+    }`;
+    assert.deepEqual(parseJsonc(raw), { a: "has ,}", b: ["x", "y ,]"], c: { d: 1 } });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1042,6 +1061,18 @@ describe("runUninstall", () => {
       assert.equal(fs.files()[targetPath], "{ broken json");
     } finally {
       captured.restore();
+    }
+  });
+
+  test("--purge (real): config write failure leaves config file intact", () => {
+    const original = JSON.stringify({ plugin: [PLUGIN_NAME] }, null, 2);
+    const fs = newFs({ [targetPath]: original });
+    fs.setFailNext("rename");
+    try {
+      assert.throws(() => runUninstall({ purge: true }, fs as unknown as CliFs));
+      assert.equal(fs.files()[targetPath], original);
+    } finally {
+      fs.setFailNext(null);
     }
   });
 
