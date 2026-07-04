@@ -102,15 +102,10 @@ export const runUninstall = (
 
   if (opts.purge && opts.dryRun) {
     plannedPurge.push(...purgeCandidates);
-  } else if (opts.purge) {
-    for (const p of purgeCandidates) {
-      const result = purgeDir(p);
-      if (result) purged.push(result);
-    }
   }
 
   // Nothing to remove from the config AND nothing to purge → true no-op.
-  if (removed.length === 0 && purged.length === 0 && plannedPurge.length === 0) {
+  if (removed.length === 0 && purgeCandidates.length === 0) {
     console.log(`✓ Not installed: ${PLUGIN_NAME} not found in ${loaded.path}`);
     return { status: "noop", path: loaded.path, removed: [], purged: [] };
   }
@@ -125,12 +120,12 @@ export const runUninstall = (
   }
 
   if (opts.dryRun) {
-    console.log(`[dry-run] Would write to ${loaded.path}:`);
-    console.log(JSON.stringify(config, null, JSON_INDENT));
     if (plannedPurge.length > 0) {
       console.log(`[dry-run] Would purge:`);
       for (const p of plannedPurge) console.log(`  ${p}`);
     }
+    console.log(`[dry-run] Would write to ${loaded.path}:`);
+    console.log(JSON.stringify(config, null, JSON_INDENT));
     return {
       status: "planned",
       path: loaded.path,
@@ -139,13 +134,18 @@ export const runUninstall = (
     };
   }
 
-  // Only touch the config file when we actually changed something AND the
-  // file existed to begin with. A fresh install that never wrote the file
-  // shouldn't create it just to leave an empty config behind.
+  // Write the updated config before purging — this preserves the invariant
+  // that config state is committed before side-effectful purge runs.
   let backup: string | null = null;
   if (removed.length > 0 && loaded.existed) {
     backup = backupIfWritable(loaded.path, fs);
     writeAtomically(loaded.path, JSON.stringify(config, null, JSON_INDENT), fs);
+  }
+
+  // Best-effort purge after config write is committed.
+  for (const p of purgeCandidates) {
+    const result = purgeDir(p);
+    if (result) purged.push(result);
   }
 
   console.log(`✓ Uninstalled ${PLUGIN_NAME}`);

@@ -300,3 +300,71 @@ describe("findScripts on walkDir (R2)", () => {
     assert.ok(!rels.some((r) => r.includes(".venv")), ".venv is skipped");
   });
 });
+
+describe("listSkillFiles", () => {
+  let workspace: string;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-lsf-"));
+    const root = path.join(workspace, "skill-dir");
+    await mkdir(path.join(root, "docs"), { recursive: true });
+    await mkdir(path.join(root, ".hidden"), { recursive: true });
+    await mkdir(path.join(root, "node_modules", "some-dep"), { recursive: true });
+    await mkdir(path.join(root, ".git", "objects"), { recursive: true });
+    await mkdir(path.join(root, "nested", "deep"), { recursive: true });
+
+    await writeFile(path.join(root, "SKILL.md"), "# skill\n", "utf8");
+    await writeFile(path.join(root, "docs", "guide.md"), "# guide\n", "utf8");
+    await writeFile(path.join(root, ".hidden", "secret.txt"), "skip\n", "utf8");
+    await writeFile(path.join(root, "node_modules", "some-dep", "index.js"), "skip\n", "utf8");
+    await writeFile(path.join(root, ".git", "objects", "pack.idx"), "skip\n", "utf8");
+    await writeFile(path.join(root, "nested", "deep", "file.txt"), "ok\n", "utf8");
+    await writeFile(path.join(root, "nested", "README.md"), "ok\n", "utf8");
+  });
+
+  after(async () => {
+    if (workspace) await rm(workspace, { recursive: true, force: true });
+  });
+
+  test("returns sorted relative paths for visible files, excluding SKILL.md", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const root = path.join(workspace, "skill-dir");
+    const files = await listSkillFiles(root, 3);
+    assert.deepEqual(files, ["docs/guide.md", "nested/README.md", "nested/deep/file.txt"]);
+  });
+
+  test("skips hidden directories", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const root = path.join(workspace, "skill-dir");
+    const files = await listSkillFiles(root, 3);
+    assert.ok(!files.some((f) => f.includes(".hidden")), "no files from hidden dirs");
+  });
+
+  test("skips node_modules", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const root = path.join(workspace, "skill-dir");
+    const files = await listSkillFiles(root, 3);
+    assert.ok(!files.some((f) => f.includes("node_modules")), "node_modules is skipped");
+  });
+
+  test("skips .git", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const root = path.join(workspace, "skill-dir");
+    const files = await listSkillFiles(root, 3);
+    assert.ok(!files.some((f) => f.includes(".git")), ".git is skipped");
+  });
+
+  test("returns empty array when base directory does not exist", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const ghost = path.join(workspace, "does-not-exist");
+    const files = await listSkillFiles(ghost, 3);
+    assert.deepEqual(files, []);
+  });
+
+  test("honors maxDepth", async () => {
+    const { listSkillFiles } = await import("../src/discovery");
+    const root = path.join(workspace, "skill-dir");
+    const files = await listSkillFiles(root, 1);
+    assert.deepEqual(files, ["docs/guide.md", "nested/README.md"]);
+  });
+});

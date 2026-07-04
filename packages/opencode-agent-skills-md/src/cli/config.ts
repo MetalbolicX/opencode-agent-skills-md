@@ -250,8 +250,50 @@ const stripJsoncComments = (text: string): string => {
     i++;
   }
 
-  // Trailing commas before } or ] (with optional whitespace between)
-  return out.replace(/,(\s*[}\]])/g, "$1");
+  // Remove trailing commas before } or ] — string-aware second pass
+  let result = "";
+  let inStr = false;
+  let esc = false;
+  let j = 0;
+  const outLen = out.length;
+
+  while (j < outLen) {
+    const ch = out[j];
+
+    if (inStr) {
+      result += ch;
+      if (esc) {
+        esc = false;
+      } else if (ch === "\\") {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      j++;
+      continue;
+    }
+
+    if (ch === '"') {
+      inStr = true;
+      result += ch;
+      j++;
+      continue;
+    }
+
+    if (ch === ",") {
+      let k = j + 1;
+      while (k < outLen && /\s/.test(out[k]!)) k++;
+      if (k < outLen && /[}\]]/.test(out[k]!)) {
+        j = k;
+        continue;
+      }
+    }
+
+    result += ch;
+    j++;
+  }
+
+  return result;
 };
 
 // ---------------------------------------------------------------------------

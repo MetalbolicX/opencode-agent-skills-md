@@ -10,6 +10,7 @@
 import { homedir } from "node:os";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { Dirent } from "node:fs";
 import type {
   DiscoveryPath,
   FileDiscoveryResult,
@@ -198,37 +199,39 @@ export const resolveSkill = (
 /**
  * Recursively list all files in a directory, returning relative paths.
  * Excludes SKILL.md since it's already loaded as the main content.
+ * Applies the same skip rules as walkDir (hidden dirs, node_modules, .git).
  */
 export const listSkillFiles = async (skillPath: string, maxDepth: number = 3): Promise<string[]> => {
   const files: string[] = [];
 
-  const recurse = async (dir: string, depth: number, relPath: string) => {
-    if (depth > maxDepth) return;
-
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    let entries: Dirent[];
     try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
 
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        const newRelPath = relPath ? `${relPath}/${entry.name}` : entry.name;
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
 
-        try {
-          const stats = await fs.stat(fullPath);
-          if (stats.isDirectory()) {
-            await recurse(fullPath, depth + 1, newRelPath);
-          } else if (stats.isFile() && entry.name !== 'SKILL.md') {
-            files.push(newRelPath);
-          }
-        } catch (error) {
-          debugLog("listSkillFiles: cannot stat", fullPath, error);
+      const fullPath = path.join(dir, entry.name);
+      const relPath = path.relative(skillPath, fullPath);
+
+      if (entry.name === "SKILL.md") continue;
+
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) {
+          await walk(fullPath, depth + 1);
         }
+      } else {
+        files.push(relPath);
       }
-    } catch (error) {
-      debugLog("listSkillFiles: cannot read directory", dir, error);
     }
   };
 
-  await recurse(skillPath, 0, '');
+  await walk(skillPath, 0);
   return files.sort();
 };
 

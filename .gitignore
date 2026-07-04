@@ -150,3 +150,6 @@ dist
 .debug/
 .atl/
 .opencode/plugins/*.js
+
+# CodeGraph index
+.codegraph/
