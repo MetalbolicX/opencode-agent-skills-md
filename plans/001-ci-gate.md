@@ -124,12 +124,12 @@ Update the badge at `README.md:4`:
 
 Old:
 ```
-<a href="https://github.com/joshuadavidthomas/opencode-agent-skills-md/actions/workflows/release.yml"><img alt="release" src="..."/></a>
+<a href="https://github.com/MetalbolicX/opencode-agent-skills-md/actions/workflows/release.yml"><img alt="release" src="..."/></a>
 ```
 
 New — point to the CI workflow:
 ```
-<a href="https://github.com/joshuadavidthomas/opencode-agent-skills-md/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/joshuadavidthomas/opencode-agent-skills-md/ci.yml?style=flat-square&logo=githubactions&label=ci" /></a>
+<a href="https://github.com/MetalbolicX/opencode-agent-skills-md/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MetalbolicX/opencode-agent-skills-md/ci.yml?style=flat-square&logo=githubactions&label=ci" /></a>
 ```
 
 **Verify**: `grep 'actions/workflows/ci.yml' README.md` → matches

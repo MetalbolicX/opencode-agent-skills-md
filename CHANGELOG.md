@@ -13,7 +13,7 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 ### Removed - for now removed features
 ### Fixed - for any bug fixes
 ### Security - in case of vulnerabilities
-[${version}]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v${version}
+[${version}]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v${version}
 -->
 
 ## [Unreleased]
@@ -34,13 +34,13 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ### Added
 
-- Added `HF_ENDPOINT` support for configuring a Hugging Face mirror for embedding model downloads ([#38](https://github.com/joshuadavidthomas/opencode-agent-skills-md/pull/38), thanks [@pablon](https://github.com/pablon)).
+- Added `HF_ENDPOINT` support for configuring a Hugging Face mirror for embedding model downloads ([#38](https://github.com/MetalbolicX/opencode-agent-skills-md/pull/38), thanks [@pablon](https://github.com/pablon)).
 
 ## [0.6.5]
 
 ### Fixed
 
-- Fixed crash on macOS ARM64 (Apple Silicon) caused by `onnxruntime-node@1.21.0` segfault regression by pinning to 1.20.1 ([#31](https://github.com/joshuadavidthomas/opencode-agent-skills-md/issues/31), [microsoft/onnxruntime#24096](https://github.com/microsoft/onnxruntime/issues/24096))
+- Fixed crash on macOS ARM64 (Apple Silicon) caused by `onnxruntime-node@1.21.0` segfault regression by pinning to 1.20.1 ([#31](https://github.com/MetalbolicX/opencode-agent-skills-md/issues/31), [microsoft/onnxruntime#24096](https://github.com/microsoft/onnxruntime/issues/24096))
 
 ## [0.6.4]
 
@@ -159,20 +159,20 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Josh Thomas <josh@joshthomas.dev> (maintainer)
 
-[unreleased]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/compare/v0.7.0...HEAD
-[0.1.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.1.0
-[0.2.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.2.0
-[0.3.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.0
-[0.3.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.1
-[0.3.2]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.2
-[0.3.3]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.3.3
-[0.4.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.4.0
-[0.4.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.4.1
-[0.5.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.5.0
-[0.6.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.0
-[0.6.1]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.1
-[0.6.2]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.2
-[0.6.3]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.3
-[0.6.4]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.4
-[0.6.5]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.6.5
-[0.7.0]: https://github.com/joshuadavidthomas/opencode-agent-skills-md/releases/tag/v0.7.0
+[unreleased]: https://github.com/MetalbolicX/opencode-agent-skills-md/compare/v0.7.0...HEAD
+[0.1.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.1.0
+[0.2.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.2.0
+[0.3.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.3.0
+[0.3.1]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.3.1
+[0.3.2]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.3.2
+[0.3.3]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.3.3
+[0.4.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.4.0
+[0.4.1]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.4.1
+[0.5.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.5.0
+[0.6.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.0
+[0.6.1]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.1
+[0.6.2]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.2
+[0.6.3]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.3
+[0.6.4]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.4
+[0.6.5]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.6.5
+[0.7.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.7.0

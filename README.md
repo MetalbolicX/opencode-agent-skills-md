@@ -1,9 +1,9 @@
 # opencode-agent-skills-md
 
 <p align="center">
-  <a href="https://github.com/joshuadavidthomas/opencode-agent-skills-md/actions/workflows/release.yml"><img alt="release" src="https://img.shields.io/github/actions/workflow/status/joshuadavidthomas/opencode-agent-skills-md/release.yml?style=flat-square&logo=githubactions&label=release" /></a>
+  <a href="https://github.com/MetalbolicX/opencode-agent-skills-md/actions/workflows/release.yml"><img alt="release" src="https://img.shields.io/github/actions/workflow/status/MetalbolicX/opencode-agent-skills-md/release.yml?style=flat-square&logo=githubactions&label=release" /></a>
   <a href="https://www.npmjs.com/package/opencode-agent-skills-md"><img alt="npm" src="https://img.shields.io/npm/v/opencode-agent-skills-md?style=flat-square&logo=npm" /></a>
-  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/joshuadavidthomas/opencode-agent-skills-md?style=flat-square" /></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/MetalbolicX/opencode-agent-skills-md?style=flat-square" /></a>
 </p>
 
 <p align="center">Reusable Agent Skills engine plus an OpenCode plugin adapter, distributed as two workspace packages.</p>
@@ -96,7 +96,7 @@ The core package has zero runtime dependency on `@opencode-ai/plugin`, so it is 
 ### Local development
 
 ```bash
-git clone https://github.com/joshuadavidthomas/opencode-agent-skills-md
+git clone https://github.com/MetalbolicX/opencode-agent-skills-md
 cd opencode-agent-skills-md
 pnpm install
 pnpm run build    # builds both packages via `pnpm -r run build`
