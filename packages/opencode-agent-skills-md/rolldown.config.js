@@ -6,9 +6,9 @@ import { defineConfig } from 'rolldown';
  *   - `dist/plugin.mjs`   — the OpenCode host adapter + default-export plugin factory.
  *   - `dist/cli.mjs`      — the `oas` CLI entry point (shebang + parseArgs dispatch).
  *
- * The core engine (`opencode-agent-skills-md-core`) is consumed as a workspace
- * package dependency, so it is treated as an external — the plugin bundle
- * keeps a runtime import for it instead of inlining the sources.
+ * The core engine (`opencode-agent-skills-md-core`) is inlined into the plugin
+ * bundle — it is removed from externals so rolldown treeshakes and bundles it
+ * directly. The plugin stays self-contained at runtime.
  *
  * `node:util` (parseArgs) and `node:url` (pathToFileURL for entry-point
  * detection) are only used by the CLI; the plugin entry doesn't need them,
@@ -17,7 +17,6 @@ import { defineConfig } from 'rolldown';
  */
 const sharedExternal = [
   '@opencode-ai/plugin',
-  'opencode-agent-skills-md-core',
   'node:fs',
   'node:fs/promises',
   'node:os',
