@@ -52,9 +52,30 @@ Both packages live in this repo as a pnpm workspace. From the repo root, `pnpm i
 
 ## Installation
 
-### OpenCode plugin
+### Quick install (recommended)
 
-Add the plugin to your OpenCode config at `~/.config/opencode/opencode.json`:
+```bash
+npx opencode-agent-skills-md install
+```
+
+This registers the plugin in your global OpenCode config and verifies the installation. Restart OpenCode to activate.
+
+### CLI commands
+
+After installing, the following commands are available:
+
+- `oas install` — register the plugin in the global OpenCode config
+- `oas uninstall` — remove the plugin from the global OpenCode config
+- `oas status` — check whether the plugin is currently installed
+- `oas doctor` — validate the OpenCode configuration health
+
+### From npm (alternative)
+
+```bash
+npm install -g opencode-agent-skills-md
+```
+
+Then add the plugin to `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -67,6 +88,16 @@ To pin a specific version:
 ```json
 {
   "plugin": ["opencode-agent-skills-md@0.7.0"]
+}
+```
+
+### Manual configuration (fallback)
+
+If you prefer not to use the CLI, add the plugin entry manually to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["opencode-agent-skills-md"]
 }
 ```
 

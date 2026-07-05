@@ -13,7 +13,7 @@ importers:
         version: 25.9.1
       opencode-agent-skills-md:
         specifier: workspace:*
-        version: link:packages/opencode-agent-skills-md
+        version: 'link:'
       opencode-agent-skills-md-core:
         specifier: workspace:*
         version: link:packages/core
@@ -43,11 +43,8 @@ importers:
   packages/opencode-agent-skills-md:
     dependencies:
       '@opencode-ai/plugin':
-        specifier: ^1.15.11
+        specifier: '>=1.0.0'
         version: 1.15.11
-      opencode-agent-skills-md-core:
-        specifier: workspace:*
-        version: link:../core
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -55,6 +52,9 @@ importers:
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      opencode-agent-skills-md-core:
+        specifier: workspace:*
+        version: link:../core
       rolldown:
         specifier: ^1.0.3
         version: 1.0.3

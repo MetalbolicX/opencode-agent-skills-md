@@ -41,36 +41,35 @@ const TESTS_DIR = path.join(PKG_DIR, "tests");
 const REPO_ROOT = path.resolve(PKG_DIR, "..", "..");
 
 describe("opencode-agent-skills-md package boundary", () => {
-  test("manifest declares the plugin as `opencode-agent-skills-md`, ESM, and private", async () => {
+  test("manifest declares the plugin as `opencode-agent-skills-md`, ESM, and publishable", async () => {
     const pkgPath = path.join(PKG_DIR, "package.json");
     const raw = await readFile(pkgPath, "utf8");
     const manifest = JSON.parse(raw) as Record<string, unknown>;
 
     assert.equal(manifest.name, "opencode-agent-skills-md", "package name preserves the existing install surface");
     assert.equal(manifest.type, "module", "package type must be ESM");
-    assert.equal(
-      manifest.private,
-      true,
-      "package must be private until publishing is wired in a later PR",
-    );
+    assert.equal(manifest.private, undefined, "package must not be private — it is published to npm");
   });
 
-  test("manifest depends on the workspace core package and on @opencode-ai/plugin", async () => {
+  test("manifest has the correct dependency shape for publishing", async () => {
     const raw = await readFile(path.join(PKG_DIR, "package.json"), "utf8");
     const manifest = JSON.parse(raw) as Record<string, unknown>;
 
     const dependencies = (manifest.dependencies ?? {}) as Record<string, string>;
-    assert.ok(
-      "opencode-agent-skills-md-core" in dependencies,
-      "dependencies must declare the workspace core package",
-    );
-    assert.ok(
-      "@opencode-ai/plugin" in dependencies,
-      "dependencies must include @opencode-ai/plugin (this is the OpenCode adapter package)",
-    );
+    const devDependencies = (manifest.devDependencies ?? {}) as Record<string, string>;
+    const peerDependencies = (manifest.peerDependencies ?? {}) as Record<string, string>;
+
     assert.ok(
       "yaml" in dependencies,
-      "dependencies must include yaml (transitively required by the core)",
+      "dependencies must include yaml (runtime dependency for the core engine)",
+    );
+    assert.ok(
+      "@opencode-ai/plugin" in peerDependencies,
+      "@opencode-ai/plugin must be a peerDependency (provided by the OpenCode host)",
+    );
+    assert.ok(
+      "opencode-agent-skills-md-core" in devDependencies,
+      "opencode-agent-skills-md-core must be a devDependency (bundled into the plugin at build time)",
     );
   });
 
