@@ -39,6 +39,127 @@ const injectSkillsList = async (
   await host.client.injectContent(sessionID, renderAvailableSkillsBlock(skills), context);
 };
 
+/**
+ * Maximum retention for per-session bookkeeping entries. When the
+ * in-memory map grows beyond this cap, the lazy sweep evicts the
+ * oldest entries by `lastTouchedAt` until the size is back at or
+ * below the cap. Picked as a generous bound that comfortably covers
+ * a multi-hour plugin session without leaking memory.
+ */
+export const MAX_TRACKED_SESSIONS = 100;
+
+/**
+ * Idle interval after which a session entry is eligible for lazy
+ * eviction on the next touch. The TTL favours active sessions: a
+ * session that has not been touched in this many milliseconds is
+ * considered stale and dropped before the cap-based eviction runs.
+ */
+export const SESSION_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Per-session bookkeeping record. Consolidates the previous
+ * `setupCompleteSessions` Set and `loadedSkillsPerSession` Map into a
+ * single record keyed by session ID. `lastTouchedAt` drives the TTL +
+ * cap eviction policy (see R-session-state-lifecycle).
+ */
+export interface SessionState {
+  setupComplete: boolean;
+  loadedSkills: Set<string>;
+  lastTouchedAt: number;
+}
+
+/**
+ * Upsert a session record and run the lazy eviction sweep in the same
+ * pass. Behaviour (in order):
+ *   1. `evictSessionState(state, now)` — drops TTL-expired entries
+ *      first, then drops the oldest-by-`lastTouchedAt` entries until
+ *      the map is at or below `MAX_TRACKED_SESSIONS`. The session we
+ *      are about to touch is never picked by step 1's TTL pass (it
+ *      is being refreshed to `now`) and is never picked by step 2
+ *      either (it is about to be the newest entry).
+ *   2. If the session exists, bump its `lastTouchedAt` and return it.
+ *   3. Otherwise insert a fresh record and return it.
+ *
+ * Pure with respect to its inputs (mutates only the supplied map);
+ * `now` is taken as a parameter so tests can drive a deterministic
+ * clock without monkey-patching `Date`.
+ */
+export const touchSessionState = (
+  state: Map<string, SessionState>,
+  sessionID: string,
+  now: number,
+): SessionState => {
+  evictSessionState(state, now);
+  const existing = state.get(sessionID);
+  if (existing) {
+    existing.lastTouchedAt = now;
+    return existing;
+  }
+  const fresh: SessionState = {
+    setupComplete: false,
+    loadedSkills: new Set(),
+    lastTouchedAt: now,
+  };
+  state.set(sessionID, fresh);
+  return fresh;
+};
+
+/**
+ * Drop TTL-expired entries first, then oldest-by-`lastTouchedAt`
+ * entries until the map has room for one new touch. Returns the IDs
+ * that were evicted (handy for tests; the plugin factory does not
+ * currently consume the return value). Pure helper — mutates only
+ * the supplied map.
+ *
+ * Post-condition: `state.size <= MAX_TRACKED_SESSIONS - 1` after this
+ * call (when called inside `touchSessionState`, the subsequent `set`
+ * brings the map back up to at most `MAX_TRACKED_SESSIONS`). The cap
+ * condition is `>= MAX_TRACKED_SESSIONS` so the very touch that would
+ * push the map over the cap is the one that triggers eviction.
+ */
+export const evictSessionState = (
+  state: Map<string, SessionState>,
+  now: number,
+): string[] => {
+  const evicted: string[] = [];
+  for (const [id, record] of state) {
+    if (now - record.lastTouchedAt > SESSION_TTL_MS) {
+      evicted.push(id);
+    }
+  }
+  for (const id of evicted) {
+    state.delete(id);
+  }
+  if (state.size >= MAX_TRACKED_SESSIONS) {
+    const sorted = Array.from(state.entries()).sort(
+      (a, b) => a[1].lastTouchedAt - b[1].lastTouchedAt,
+    );
+    const excess = state.size - (MAX_TRACKED_SESSIONS - 1);
+    for (let i = 0; i < excess; i++) {
+      const entry = sorted[i];
+      if (entry) {
+        const [id] = entry;
+        state.delete(id);
+        evicted.push(id);
+      }
+    }
+  }
+  return evicted;
+};
+
+/**
+ * Remove the entry for `sessionID`. Returns `true` when the map held
+ * the entry and removed it, `false` otherwise. Used by the explicit
+ * `session.deleted` lifecycle path so cleanup does not have to wait
+ * for the next lazy sweep.
+ */
+export const deleteSessionState = (
+  state: Map<string, SessionState>,
+  sessionID: string,
+): boolean => {
+  return state.delete(sessionID);
+};
+
 const maybeInjectSuperpowersBootstrap = async (
   directory: string,
   host: { client: OpencodeSkillHostClient },
@@ -163,18 +284,14 @@ export const SkillsPlugin: Plugin = async ({
   const host = createOpencodeSkillHost(client);
 
   // Per-instance session state. Module-level state would leak across plugin
-  // instances (two plugins in the same process would share `setupComplete`
-  // and `loadedSkillsPerSession`), so these live in the factory closure.
-  const setupCompleteSessions = new Set<string>();
-  const loadedSkillsPerSession = new Map<string, Set<string>>();
+  // instances (two plugins in the same process would share the bookkeeping
+  // map), so it lives in the factory closure. The `touchSessionState`
+  // helper drives both the lazy TTL + cap eviction and the per-touch
+  // `lastTouchedAt` bump in a single call.
+  const sessionStates = new Map<string, SessionState>();
 
   const getLoadedSkills = (sessionID: string): Set<string> => {
-    let set = loadedSkillsPerSession.get(sessionID);
-    if (!set) {
-      set = new Set<string>();
-      loadedSkillsPerSession.set(sessionID, set);
-    }
-    return set;
+    return touchSessionState(sessionStates, sessionID, Date.now()).loadedSkills;
   };
 
   /**
@@ -184,7 +301,8 @@ export const SkillsPlugin: Plugin = async ({
    * this plugin instance attached).
    */
   const isFirstMessageSetup = async (sessionID: string): Promise<boolean> => {
-    if (setupCompleteSessions.has(sessionID)) return false;
+    const record = touchSessionState(sessionStates, sessionID, Date.now());
+    if (record.setupComplete) return false;
     try {
       const existing = await client.session.messages({
         path: { id: sessionID },
@@ -204,13 +322,13 @@ export const SkillsPlugin: Plugin = async ({
           });
         });
         if (hasSkillsContent) {
-          setupCompleteSessions.add(sessionID);
+          record.setupComplete = true;
         }
       }
     } catch (error) {
       debugLog("isFirstMessageSetup: failed to read existing messages", error);
     }
-    return !setupCompleteSessions.has(sessionID);
+    return !record.setupComplete;
   };
 
   /** Mark the session as bootstrapped and inject the available-skills block. */
@@ -219,7 +337,8 @@ export const SkillsPlugin: Plugin = async ({
     skillsByName: Map<string, Skill>,
     context: SkillHostContext,
   ): Promise<void> => {
-    setupCompleteSessions.add(sessionID);
+    const record = touchSessionState(sessionStates, sessionID, Date.now());
+    record.setupComplete = true;
     await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context, skillsByName);
     await injectSkillsList(directory, host, sessionID, context, skillsByName);
   };
@@ -318,7 +437,12 @@ export const SkillsPlugin: Plugin = async ({
         const context = await host.client.getSessionContext(sessionID);
         await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context);
         await injectSkillsList(directory, host, sessionID, context);
-        loadedSkillsPerSession.delete(sessionID);
+        // Touch to refresh `lastTouchedAt`, then clear the loaded-skill
+        // set so the keyword matcher can re-trigger. `setupComplete`
+        // stays true so the next chat.message takes the keyword path
+        // rather than re-bootstrapping.
+        const record = touchSessionState(sessionStates, sessionID, Date.now());
+        record.loadedSkills.clear();
         return;
       }
 
@@ -328,8 +452,8 @@ export const SkillsPlugin: Plugin = async ({
           debugLog("event: session.deleted missing info.id", event);
           return;
         }
-        setupCompleteSessions.delete(sessionID);
-        loadedSkillsPerSession.delete(sessionID);
+        // Explicit cleanup — no need to wait for the lazy sweep.
+        deleteSessionState(sessionStates, sessionID);
       }
     },
 
