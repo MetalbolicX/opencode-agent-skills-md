@@ -10,7 +10,12 @@ import {
   type FixtureWorkspace,
 } from "../integration/helpers/mock-opencode";
 import { createOpencodeSkillHost } from "../../src/host";
-import { createSkillTools, resolveSkillOrSuggest } from "../../src/tools";
+import {
+  createSkillTools,
+  resolveSkillOrSuggest,
+  runBoundSkillScript,
+  SKILL_SCRIPT_TIMEOUT_MS,
+} from "../../src/tools";
 
 /**
  * Hand-rolled stub OpenCode client. Only the methods the four skill
@@ -389,5 +394,348 @@ describe("single-pass tool discovery (R-skill-tool-discovery)", () => {
     } finally {
       warnSpy.mock.restore();
     }
+  });
+});
+
+/**
+ * Unit 3 (plan 012) — Bounded Script Execution.
+ *
+ * `runBoundSkillScript` races a shell `.text()` promise against a
+ * wall-clock timeout (`SKILL_SCRIPT_TIMEOUT_MS`) and an optional
+ * `AbortSignal`. Timeout / cancel return deterministic messages;
+ * success returns the shell output verbatim. `apis: ['setTimeout']`
+ * keeps the `mock.timers` scope from touching `setImmediate`.
+ */
+describe("RunSkillScript bounded execution (R-skill-script-execution)", () => {
+  describe("runBoundSkillScript helper (pure)", () => {
+    /**
+     * Drain microtasks queued by a `mock.timers.tick`. The race
+     * resolution inside `runBoundSkillScript` settles across a few
+     * microtask hops (timeout → race → outer handler), and a single
+     * `await Promise.resolve()` is not always enough to drain them.
+     * Five sequential drains is empirically safe.
+     */
+    async function drainMicrotasks(): Promise<void> {
+      for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+      }
+    }
+
+    test("returns the shell output verbatim when the shell resolves within the bound", async () => {
+      const result = await runBoundSkillScript(
+        Promise.resolve("multi\nline\noutput"),
+        undefined,
+        30_000,
+        "/skills/foo/build.sh",
+      );
+      assert.equal(
+        result,
+        "multi\nline\noutput",
+        "successful shell output must be returned unchanged — no trim, no wrapping",
+      );
+    });
+
+    test("returns the deterministic timeout message after the bound elapses (mocked clock)", async () => {
+      mock.timers.enable({ apis: ["setTimeout"] });
+      try {
+        // A promise that never resolves. The race winner must be the
+        // timeout branch, not this branch.
+        const neverResolving = new Promise<string>(() => {});
+        const helperPromise = runBoundSkillScript(
+          neverResolving,
+          undefined,
+          30_000,
+          "/skills/foo/build.sh",
+        );
+
+        let resolved = false;
+        let resolvedValue: string | undefined;
+        helperPromise.then((v) => {
+          resolved = true;
+          resolvedValue = v;
+        });
+
+        await drainMicrotasks();
+        assert.equal(resolved, false, "helper must not resolve before the timeout fires");
+
+        mock.timers.tick(30_000);
+        await drainMicrotasks();
+
+        assert.equal(resolved, true, "helper must resolve after the timeout fires");
+        assert.equal(
+          resolvedValue,
+          `Script "/skills/foo/build.sh" timed out after 30000ms.`,
+          "timeout message must be deterministic and carry the script path + bound",
+        );
+      } finally {
+        mock.timers.reset();
+      }
+    });
+
+    test("returns the cancellation message when the abort signal is already aborted at call time", async () => {
+      const ac = new AbortController();
+      ac.abort();
+      const result = await runBoundSkillScript(
+        new Promise<string>(() => {}),
+        ac.signal,
+        30_000,
+        "/skills/foo/build.sh",
+      );
+      assert.equal(
+        result,
+        `Script "/skills/foo/build.sh" cancelled.`,
+        "pre-aborted signal must short-circuit to the cancellation branch",
+      );
+    });
+
+    test("returns the cancellation message when the abort signal fires mid-flight", async () => {
+      mock.timers.enable({ apis: ["setTimeout"] });
+      try {
+        const ac = new AbortController();
+        const neverResolving = new Promise<string>(() => {});
+        const helperPromise = runBoundSkillScript(
+          neverResolving,
+          ac.signal,
+          30_000,
+          "/skills/foo/build.sh",
+        );
+
+        let resolved = false;
+        let resolvedValue: string | undefined;
+        helperPromise.then((v) => {
+          resolved = true;
+          resolvedValue = v;
+        });
+
+        await drainMicrotasks();
+        assert.equal(resolved, false, "helper must not resolve before abort fires");
+
+        // Fire abort at 100ms (well below the 30s timeout) so the
+        // cancellation branch wins the race.
+        ac.abort();
+        await drainMicrotasks();
+
+        assert.equal(resolved, true, "helper must resolve after abort fires");
+        assert.equal(
+          resolvedValue,
+          `Script "/skills/foo/build.sh" cancelled.`,
+          "abort message must be deterministic and carry the script path",
+        );
+      } finally {
+        mock.timers.reset();
+      }
+    });
+  });
+
+  describe("RunSkillScript tool integration", () => {
+    let workspace: FixtureWorkspace;
+    const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+
+    /**
+     * Shell stub whose `.text()` never resolves. `textCalledPromise`
+     * resolves on the `.text()` call so tests can wait for the helper
+     * to register its setTimeout / abort listener before racing it.
+     */
+    function createNeverResolvingShellStub(): {
+      shell: unknown;
+      calls: Array<{ cwd: string; command: string }>;
+      textCalledPromise: Promise<void>;
+    } {
+      const calls: Array<{ cwd: string; command: string }> = [];
+      let currentCwd = "";
+      let signalTextCalled: () => void = () => {};
+      const textCalledPromise = new Promise<void>((resolve) => {
+        signalTextCalled = resolve;
+      });
+      const shell = Object.assign(
+        ((_strings: TemplateStringsArray, ..._values: unknown[]) => {
+          calls.push({ cwd: currentCwd, command: "<never-resolving>" });
+          return {
+            text: () => {
+              // Signal AFTER the promise object is constructed so the
+              // helper's `await runBoundSkillScript(...)` has already
+              // wrapped the shell promise (and scheduled its race).
+              signalTextCalled();
+              return new Promise<string>(() => {});
+            },
+          };
+        }) as any,
+        {
+          cwd(directory: string) {
+            currentCwd = directory;
+            return shell;
+          },
+          calls,
+        },
+      );
+      return { shell, calls, textCalledPromise };
+    }
+
+    /**
+     * Shell stub whose `.text()` rejects with a BunShellError-shaped
+     * error (`exitCode`, `stdout`, `stderr` Buffers). Pins the
+     * exit-code formatting contract.
+     */
+    function createFailingShellStub(opts: {
+      exitCode: number;
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    }): { shell: unknown; calls: Array<{ cwd: string; command: string }> } {
+      const calls: Array<{ cwd: string; command: string }> = [];
+      let currentCwd = "";
+      const shell = Object.assign(
+        ((_strings: TemplateStringsArray, ..._values: unknown[]) => {
+          calls.push({ cwd: currentCwd, command: "<failing>" });
+          const err = Object.assign(
+            new Error(opts.message ?? "shell exit error"),
+            {
+              exitCode: opts.exitCode,
+              stdout: Buffer.from(opts.stdout ?? ""),
+              stderr: Buffer.from(opts.stderr ?? ""),
+            },
+          );
+          return {
+            text: () => Promise.reject(err),
+          };
+        }) as any,
+        {
+          cwd(directory: string) {
+            currentCwd = directory;
+            return shell;
+          },
+          calls,
+        },
+      );
+      return { shell, calls };
+    }
+
+    async function drainMicrotasks(): Promise<void> {
+      for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+      }
+    }
+
+    beforeEach(async () => {
+      workspace = await createFixtureWorkspace();
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+    });
+
+    afterEach(async () => {
+      if (workspace) {
+        await workspace.cleanup();
+      }
+      if (previousSuperpowersMode === undefined) {
+        delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+      } else {
+        process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+      }
+    });
+
+    test("returns the deterministic timeout message after 30000ms with a never-resolving shell stub", async () => {
+      const { shell, textCalledPromise } = createNeverResolvingShellStub();
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const tools = createSkillTools(host, shell as any, workspace.projectRoot);
+
+      mock.timers.enable({ apis: ["setTimeout"] });
+      try {
+        const toolPromise = tools.RunSkillScript.execute(
+          { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["hi"] },
+          { sessionID: "u3-timeout" } as any,
+        );
+
+        let resolved = false;
+        let resolvedValue: string | undefined;
+        toolPromise.then((v) => {
+          resolved = true;
+          resolvedValue = v as string;
+        });
+
+        // Wait for the tool's async setup (skill discovery + script
+        // resolution) to reach the helper. Until `.text()` is called,
+        // the helper's setTimeout is not yet registered in the mock
+        // clock and ticking would be a no-op.
+        await textCalledPromise;
+        await drainMicrotasks();
+        assert.equal(resolved, false, "tool must not resolve before the bound elapses");
+
+        mock.timers.tick(30_000);
+        await drainMicrotasks();
+
+        assert.equal(resolved, true, "tool must resolve after 30000ms of mocked time");
+        assert.equal(
+          resolvedValue,
+          `Script "${path.join(workspace.scriptedSkillPath, "bin/echo.sh")}" timed out after 30000ms.`,
+          "tool must surface the deterministic timeout message carrying the script path + bound",
+        );
+      } finally {
+        mock.timers.reset();
+      }
+    });
+
+    test("returns the cancellation message when ctx.abort fires while the shell is still running", async () => {
+      const { shell, textCalledPromise } = createNeverResolvingShellStub();
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const tools = createSkillTools(host, shell as any, workspace.projectRoot);
+
+      const ac = new AbortController();
+      const toolPromise = tools.RunSkillScript.execute(
+        { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["hi"] },
+        { sessionID: "u3-cancel", abort: ac.signal } as any,
+      );
+
+      let resolved = false;
+      let resolvedValue: string | undefined;
+      toolPromise.then((v) => {
+        resolved = true;
+        resolvedValue = v as string;
+      });
+
+      // Wait until the helper has registered its abort listener.
+      // Otherwise firing `ac.abort()` before the helper's
+      // `addEventListener` runs would silently miss the event and the
+      // tool would hang on the 30s timer instead of cancelling.
+      await textCalledPromise;
+      await drainMicrotasks();
+      assert.equal(resolved, false, "tool must not resolve before abort fires");
+
+      ac.abort();
+      await drainMicrotasks();
+
+      assert.equal(resolved, true, "tool must resolve after ctx.abort fires");
+      assert.equal(
+        resolvedValue,
+        `Script "${path.join(workspace.scriptedSkillPath, "bin/echo.sh")}" cancelled.`,
+        "tool must surface the deterministic cancellation message carrying the script path",
+      );
+    });
+
+    test("preserves the exit-code formatting `Script failed (exit <code>): <stderr|stdout|message>` on a normal shell failure", async () => {
+      // The pre-Unit-3 contract:
+      //   - error has `exitCode` and at least one of `stderr` / `stdout` /
+      //     `message`
+      //   - tool returns: `Script failed (exit <code>): <stderr or stdout or message>`
+      // This regression guards the wire-up so Unit 3 doesn't accidentally
+      // swallow the error path inside the helper.
+      const { shell } = createFailingShellStub({
+        exitCode: 42,
+        stderr: "boom: command not found",
+        stdout: "",
+        message: "shell exit error",
+      });
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const tools = createSkillTools(host, shell as any, workspace.projectRoot);
+
+      const result = await tools.RunSkillScript.execute(
+        { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["hi"] },
+        { sessionID: "u3-exit-code" } as any,
+      );
+
+      assert.equal(
+        result,
+        "Script failed (exit 42): boom: command not found",
+        "exit-code formatting must remain byte-identical to the pre-Unit-3 contract",
+      );
+    });
   });
 });
