@@ -209,6 +209,90 @@ export const resolveSafeSkillFilePath = async (
   }
 };
 
+/**
+ * Maximum runtime, in milliseconds, that a `run_skill_script` invocation
+ * is allowed to wait on its shell `.text()` promise before the helper
+ * resolves with the deterministic timeout message.
+ *
+ * Exported so tests can pin the value without re-deriving the design
+ * decision. Bumping this constant is a behavior change — tool callers
+ * (and any review of this constant) must read it against the spec
+ * scenario "Script exceeds the bound".
+ */
+export const SKILL_SCRIPT_TIMEOUT_MS = 30000;
+
+/**
+ * Race a shell `.text()` promise against a wall-clock timeout and an
+ * optional abort signal.
+ *
+ * Three branches win the race:
+ *   - `shellPromise` resolves first → the shell's stdout string is
+ *     returned verbatim. Successful output is never trimmed, wrapped,
+ *     or annotated.
+ *   - The `timeoutMs` timer fires first → returns
+ *     `Script "<scriptPath>" timed out after <timeoutMs>ms.` so the
+ *     tool surface can surface a deterministic, script-path-tagged
+ *     failure instead of waiting indefinitely.
+ *   - The `abortSignal` fires first (or is already aborted at call
+ *     time) → returns `Script "<scriptPath>" cancelled.`.
+ *
+ * The timer is cleared and the abort listener is removed on every exit
+ * path, including the early-exit "already aborted" case, so a long
+ * plugin session never leaks handlers.
+ *
+ * The helper does NOT attempt to kill the underlying child process — the
+ * design rationale notes that `BunShell` exposes no timeout/abort
+ * control. The bound is a tool-side wait bound; the shell may continue
+ * running in the background, but the tool surface stops waiting on it.
+ */
+export const runBoundSkillScript = async (
+  shellPromise: Promise<string>,
+  abortSignal: AbortSignal | undefined,
+  timeoutMs: number,
+  scriptPath: string,
+): Promise<string> => {
+  // Fast path: caller already cancelled. Skip scheduling any work and
+  // return the cancellation message synchronously.
+  if (abortSignal?.aborted) {
+    return `Script "${scriptPath}" cancelled.`;
+  }
+
+  // The cleanup list runs in `finally` on every exit path (success,
+  // timeout, abort). It MUST clear both the timer and the abort
+  // listener so a long-lived plugin session never leaks either.
+  const cleanup: Array<() => void> = [];
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<string>((resolve) => {
+    timeoutHandle = setTimeout(
+      () => resolve(`Script "${scriptPath}" timed out after ${timeoutMs}ms.`),
+      timeoutMs,
+    );
+  });
+  cleanup.push(() => {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  });
+
+  let abortPromise: Promise<string>;
+  if (abortSignal) {
+    abortPromise = new Promise<string>((resolve) => {
+      const onAbort = () => resolve(`Script "${scriptPath}" cancelled.`);
+      abortSignal.addEventListener("abort", onAbort, { once: true });
+      cleanup.push(() => abortSignal.removeEventListener("abort", onAbort));
+    });
+  } else {
+    // No signal was provided; the abort branch never wins. A
+    // pending Promise is the canonical "never resolves" shape.
+    abortPromise = new Promise<string>(() => {});
+  }
+
+  try {
+    return await Promise.race([shellPromise, timeoutPromise, abortPromise]);
+  } finally {
+    for (const fn of cleanup) fn();
+  }
+};
+
 const GetAvailableSkills = (directory: string): SkillTool => {
   return tool({
     description:
@@ -321,7 +405,7 @@ const RunSkillScript = (directory: string, $: PluginInput["$"]): SkillTool => {
       arguments: tool.schema.array(tool.schema.string()).optional()
         .describe("Arguments to pass to the script")
     },
-    async execute(args) {
+    async execute(args, ctx) {
       const resolution = await resolveSkillOrSuggest(directory, args.skill);
       if (!resolution.ok) return resolution.message;
       const skill = resolution.skill;
@@ -343,7 +427,17 @@ const RunSkillScript = (directory: string, $: PluginInput["$"]): SkillTool => {
       try {
         $.cwd(skill.path);
         const scriptArgs = (args.arguments || []).map(escapeShellArg).join(' ');
-        const result = await $`${script.absolutePath} ${scriptArgs}`.text();
+        // Bound the wait on the shell `.text()` promise so a stuck
+        // script can never stall a plugin session. Success output is
+        // returned verbatim — the helper is a pass-through on the
+        // happy path. Timeout / abort paths return deterministic
+        // strings that name the offending script.
+        const result = await runBoundSkillScript(
+          $`${script.absolutePath} ${scriptArgs}`.text(),
+          ctx?.abort,
+          SKILL_SCRIPT_TIMEOUT_MS,
+          script.absolutePath,
+        );
         return result;
       } catch (error: unknown) {
         if (error instanceof Error && 'exitCode' in error) {
