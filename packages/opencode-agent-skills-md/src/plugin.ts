@@ -12,6 +12,7 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import {
   discoverAllSkills,
   renderAvailableSkillsBlock,
+  renderSkillPreflightBlock,
   type Skill,
   type SkillHostContext,
   type SkillSummary,
@@ -24,7 +25,16 @@ import {
   isSessionCompactedEvent,
   isSessionDeletedEvent,
   type ChatMessageOutput,
+  type SystemTransformInput,
+  type SystemTransformOutput,
+  type ToolDefinitionInput,
+  type ToolDefinitionOutput,
 } from "./sdk";
+import {
+  applySystemTransform,
+  applyToolDefinition,
+  isPreferenceLayerEnabled,
+} from "./preference-hooks";
 
 const injectSkillsList = async (
   directory: string,
@@ -61,10 +71,28 @@ export const SESSION_TTL_MS = 30 * 60 * 1000;
  * `setupCompleteSessions` Set and `loadedSkillsPerSession` Map into a
  * single record keyed by session ID. `lastTouchedAt` drives the TTL +
  * cap eviction policy (see R-session-state-lifecycle).
+ *
+ * Preference-layer additions (PR 2 of preference-layer):
+ *
+ *   - `pendingSkills` tracks skills that matched the current turn and
+ *     have been injected as a `<skill-preflight>` directive but not yet
+ *     loaded via `use_skill`. A successful load removes the entry so
+ *     the same skill does not re-trigger on the next turn.
+ *   - `injectedSummaries` records every skill whose `<skill-preflight>`
+ *     directive has been injected for the session, regardless of whether
+ *     it was subsequently loaded. It functions as the dedupe set:
+ *     `handleKeywordMatch` filters out skills already in this set so a
+ *     keyword match in a later turn does NOT re-emit the same directive.
+ *
+ * Both sets are reset on `session.compacted` (per design's
+ * "Compaction resets state" scenario) and dropped wholesale on
+ * `session.deleted` via the existing `deleteSessionState` helper.
  */
 export interface SessionState {
   setupComplete: boolean;
   loadedSkills: Set<string>;
+  pendingSkills: Set<string>;
+  injectedSummaries: Set<string>;
   lastTouchedAt: number;
 }
 
@@ -98,6 +126,8 @@ export const touchSessionState = (
   const fresh: SessionState = {
     setupComplete: false,
     loadedSkills: new Set(),
+    pendingSkills: new Set(),
+    injectedSummaries: new Set(),
     lastTouchedAt: now,
   };
   state.set(sessionID, fresh);
@@ -343,22 +373,65 @@ export const SkillsPlugin: Plugin = async ({
     await injectSkillsList(directory, host, sessionID, context, skillsByName);
   };
 
-  /** Run keyword matching on the user message and inject the matched-skill prompt. */
+  /**
+   * Run keyword matching on the user message and inject the matched-skill prompt.
+   *
+   * PR 2 of preference-layer — replaces the legacy soft-hint
+   * `<skill-evaluation-required>` block with the directive
+   * `<skill-preflight>` block rendered from core, and adds three
+   * dedupe sets:
+   *
+   *   - `loadedSkills` — skills already loaded via `use_skill` this
+   *     session; never re-injected.
+   *   - `pendingSkills` — skills whose `<skill-preflight>` directive
+   *     has been injected this session but not yet loaded. A
+   *     successful `use_skill` removes the entry (see the
+   *     `onSkillLoaded` callback below).
+   *   - `injectedSummaries` — every skill whose directive has been
+   *     injected this session. Functions as the dedupe set: a keyword
+   *     match in a later turn does NOT re-emit the same directive
+   *     for a skill that has already been suggested (spec scenario:
+   *     "Duplicate match is deduped").
+   *
+   * All three sets are reset on `session.compacted`. The whole
+   * directive-injection path is gated by `isPreferenceLayerEnabled()`
+   * so the `OPENCODE_AGENT_SKILLS_PREFERENCE_MODE=off` env var fully
+   * disables Layer 3 of the preference layer (spec scenario:
+   * "Off disables every layer").
+   */
   const handleKeywordMatch = async (
     userText: string,
     sessionID: string,
     summaries: SkillSummary[],
     context: SkillHostContext,
   ): Promise<void> => {
+    if (!isPreferenceLayerEnabled()) return;
     if (!userText) return;
     if (summaries.length === 0) return;
 
     const matchedSkills = matchSkillsByKeyword(userText, summaries);
-    const loadedSkills = getLoadedSkills(sessionID);
-    const newSkills = matchedSkills.filter(s => !loadedSkills.has(s.name));
+    const record = touchSessionState(sessionStates, sessionID, Date.now());
+    const newSkills = matchedSkills.filter(
+      (s) =>
+        !record.loadedSkills.has(s.name) &&
+        !record.pendingSkills.has(s.name) &&
+        !record.injectedSummaries.has(s.name),
+    );
     if (newSkills.length === 0) return;
 
-    const injectionText = formatMatchedSkillsInjection(newSkills);
+    const injectionText = renderSkillPreflightBlock(newSkills);
+    if (!injectionText) return;
+
+    // Mark every newly-injected skill as pending + recorded in the
+    // injectedSummaries dedupe set BEFORE the await on injectContent,
+    // so a concurrent chat.message on the same session sees the
+    // dedupe state immediately and does not race a duplicate
+    // injection.
+    for (const skill of newSkills) {
+      record.pendingSkills.add(skill.name);
+      record.injectedSummaries.add(skill.name);
+    }
+
     await host.client.injectContent(sessionID, injectionText, context);
   };
 
@@ -367,7 +440,14 @@ export const SkillsPlugin: Plugin = async ({
     $,
     directory,
     (sessionID, skillName) => {
-      getLoadedSkills(sessionID).add(skillName);
+      const record = touchSessionState(sessionStates, sessionID, Date.now());
+      record.loadedSkills.add(skillName);
+      // Successful `use_skill` clears the pending entry so the next
+      // turn does not try to re-prompt for this skill. The skill
+      // stays in `injectedSummaries` so the dedupe set is preserved
+      // for the lifetime of the session (it gets reset on compaction,
+      // not on load).
+      record.pendingSkills.delete(skillName);
     },
   );
 
@@ -437,12 +517,17 @@ export const SkillsPlugin: Plugin = async ({
         const context = await host.client.getSessionContext(sessionID);
         await maybeInjectSuperpowersBootstrap(directory, host, sessionID, context);
         await injectSkillsList(directory, host, sessionID, context);
-        // Touch to refresh `lastTouchedAt`, then clear the loaded-skill
-        // set so the keyword matcher can re-trigger. `setupComplete`
-        // stays true so the next chat.message takes the keyword path
-        // rather than re-bootstrapping.
+        // Touch to refresh `lastTouchedAt`, then reset the loaded-skill,
+        // pending, and injected-summary sets so the keyword matcher can
+        // re-trigger after compaction. `setupComplete` stays true so the
+        // next chat.message takes the keyword path rather than
+        // re-bootstrapping. Per the preference-layer spec, compaction
+        // resets both `pendingSkills` and `injectedSummaries` so the
+        // dedupe state does not leak across the compaction boundary.
         const record = touchSessionState(sessionStates, sessionID, Date.now());
         record.loadedSkills.clear();
+        record.pendingSkills.clear();
+        record.injectedSummaries.clear();
         return;
       }
 
@@ -462,6 +547,64 @@ export const SkillsPlugin: Plugin = async ({
       read_skill_file: tools.ReadSkillFile,
       run_skill_script: tools.RunSkillScript,
       use_skill: tools.UseSkill,
+    },
+
+    /**
+     * `tool.definition` — append-only description annotation.
+     *
+     * Layer 2 of the preference layer: for each native tool whose
+     * ID is in `PREFERENCE_TOOL_IDS`, append the one-sentence
+     * skill-first note to its description. Tools outside the set
+     * pass through untouched. The helper itself short-circuits when
+     * `OPENCODE_AGENT_SKILLS_PREFERENCE_MODE=off`, but we guard the
+     * hook entry point too so the SDK never even calls the helper
+     * when the layer is off (defense in depth + zero work on the
+     * hot path).
+     */
+    "tool.definition": async (input: unknown, output: unknown) => {
+      if (!isPreferenceLayerEnabled()) return;
+      applyToolDefinition(
+        input as ToolDefinitionInput,
+        output as ToolDefinitionOutput,
+      );
+    },
+
+    /**
+     * `experimental.chat.system.transform` — append-only system prompt
+     * injection.
+     *
+     * Layer 1 of the preference layer: on every chat turn the SDK
+     * passes the system prompt array it is assembling; we push the
+     * `<skill-preference-policy>` block (with the catalog of every
+     * available skill) onto that array. Append-only — existing entries
+     * are preserved. The env-var gate inside the helper short-circuits
+     * cleanly when the layer is disabled.
+     */
+    "experimental.chat.system.transform": async (
+      _input: unknown,
+      output: unknown,
+    ) => {
+      if (!isPreferenceLayerEnabled()) return;
+      const rawOutput = output as SystemTransformOutput | undefined;
+      if (!rawOutput || typeof rawOutput !== "object") {
+        debugLog(
+          "experimental.chat.system.transform: missing or non-object output",
+          output,
+        );
+        return;
+      }
+      // Cheap discovery: the catalog lists every skill the model can
+      // choose from. Run a single `discoverAllSkills` per turn — the
+      // same cost the existing chat.message path pays.
+      const skillsByName = await discoverAllSkills(directory);
+      const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(
+        (skill) => ({
+          name: skill.name,
+          description: skill.description,
+          trigger: skill.trigger,
+        }),
+      );
+      applySystemTransform(summaries, rawOutput);
     },
   };
 };

@@ -43,6 +43,54 @@ export interface SessionDeletedEvent {
 /** Discriminated union of the session lifecycle events this plugin handles. */
 export type SessionEvent = SessionCompactedEvent | SessionDeletedEvent;
 
+/**
+ * Narrow input shape for the `experimental.chat.system.transform` hook.
+ *
+ * The hook lets the plugin mutate the system prompt that the SDK
+ * assembles for the next chat turn. We only read the message/session
+ * identity — the actual system mutation lives on the output side.
+ */
+export interface SystemTransformInput {
+  sessionID?: string;
+  model?: { providerID: string; modelID: string };
+  agent?: string;
+}
+
+/**
+ * Narrow output shape for the `experimental.chat.system.transform` hook.
+ *
+ * `system` is the array of system prompt fragments the SDK is
+ * assembling; appending here is non-destructive and composes with
+ * every other plugin/system entry that the SDK is layering in.
+ */
+export interface SystemTransformOutput {
+  system: string[];
+}
+
+/**
+ * Narrow input shape for the `tool.definition` hook.
+ *
+ * `toolID` is the OpenCode identifier of the tool whose definition
+ * the SDK is about to expose to the model. The plugin only reads the
+ * identifier; the actual annotation lives on the output side.
+ */
+export interface ToolDefinitionInput {
+  toolID: string;
+}
+
+/**
+ * Narrow output shape for the `tool.definition` hook.
+ *
+ * The plugin only mutates `description` for tools in the
+ * `PREFERENCE_TOOL_IDS` set; `parameters` is preserved verbatim. Per
+ * the SDK contract, the hook is non-canceling — it can only enrich
+ * the existing description, never replace it.
+ */
+export interface ToolDefinitionOutput {
+  description: string;
+  parameters: unknown;
+}
+
 /** Type guard: narrows `unknown` to `ChatTextPart` when `part.type === "text"`. */
 export const isChatTextPart = (part: unknown): part is ChatTextPart => {
   return (

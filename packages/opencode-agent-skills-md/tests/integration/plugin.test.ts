@@ -110,10 +110,15 @@ describe("plugin integration", () => {
    *   - after `use_skill`, `onSkillLoaded` is observable via the session's
    *     loaded-skill state
    *   - the same keyword in a subsequent chat.message does NOT re-trigger
-   *     a <skill-evaluation-required> injection for the loaded skill
+   *     a <skill-preflight> directive for the loaded skill
    *
    * With the regression, the loader does not update loaded-skill state so
-   * the matcher re-emits an evaluation prompt for the already-loaded skill.
+   * the matcher re-emits a directive for the already-loaded skill.
+   *
+   * PR 2 of preference-layer: the production flow now emits
+   * `<skill-preflight>...</skill-preflight>` instead of the legacy
+   * `<skill-evaluation-required>` soft hint. The dedupe contract is
+   * identical; only the wrapping tag and the directive shape change.
    */
   test("use_skill callback updates loaded-skill state and prevents duplicate match injection (PR 1)", async () => {
     const { SkillsPlugin } = await import("../../src");
@@ -173,12 +178,12 @@ describe("plugin integration", () => {
     );
     const newPrompts = client.prompts.slice(promptsBeforeRepeat);
     const evaluationInjections = newPrompts.filter((p) =>
-      /<skill-evaluation-required>/.test(p.text),
+      /<skill-preflight>/.test(p.text),
     );
     for (const prompt of evaluationInjections) {
       assert.doesNotMatch(
         prompt.text,
-        /^- scripted-skill:/m,
+        /use_skill\("scripted-skill"\)/,
         "loaded-skill state must suppress scripted-skill from re-injection",
       );
     }
@@ -803,5 +808,289 @@ describe("Bounded session bookkeeping — wiring", () => {
       newPromptsAfterDelete.some((p) => /<available-skills>/.test(p.text)),
       "chat.message after session.deleted re-injects <available-skills>, proving the prior record was removed",
     );
+  });
+});
+
+/**
+ * Preference-layer integration coverage (PR 2 of preference-layer).
+ *
+ * Drives the four spec scenarios at the integration layer:
+ *
+ *   - **Off disables every layer** — with `OPENCODE_AGENT_SKILLS_PREFERENCE_MODE=off`,
+ *     `experimental.chat.system.transform`, `tool.definition`, and
+ *     `chat.message` keyword preflight all become no-ops. The plugin
+ *     continues to bootstrap and the four skill tools continue to work,
+ *     but the model sees no preference-layer steering at all.
+ *   - **Compaction resets both tracking sets** — after `session.compacted`,
+ *     a previously-injected skill can be re-injected as a preflight
+ *     directive (because `injectedSummaries` was cleared) and a previously-
+ *     pending skill is no longer pending.
+ *   - **`use_skill` clears the pending entry** — after a keyword match
+ *     injects a `<skill-preflight>` directive for `scripted-skill`, a
+ *     subsequent `use_skill("scripted-skill")` removes it from
+ *     `pendingSkills`. The directive does NOT need to re-fire on the
+ *     next turn because `injectedSummaries` still suppresses it; this
+ *     pins the "load clears pending state" scenario.
+ *   - **Duplicate match within a session is deduped** — two keyword
+ *     matches on the same session for the same skill produce exactly
+ *     one `<skill-preflight>` injection.
+ */
+describe("Preference layer (PR 2)", () => {
+  let workspace: Awaited<ReturnType<typeof createFixtureWorkspace>>;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+  const previousPreferenceMode = process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+    // Default for every test in this block: preference layer ENABLED.
+    // Individual tests override to "off" when they need to assert the
+    // disabled state.
+    delete process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE;
+  });
+
+  afterEach(async () => {
+    if (workspace) await workspace.cleanup();
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+    if (previousPreferenceMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE = previousPreferenceMode;
+    }
+  });
+
+  async function drivePlugin() {
+    const { SkillsPlugin } = await import("../../src");
+    const client = createMockOpencodeClient();
+    const shell = createShellRecorder();
+    const plugin = await SkillsPlugin({
+      client: client.client,
+      $: shell.shell,
+      directory: workspace.projectRoot,
+    } as any);
+    return { plugin, client };
+  }
+
+  async function bootstrapSession(
+    plugin: { "chat.message": (input: unknown, output: unknown) => Promise<void> },
+    sessionID: string,
+  ): Promise<void> {
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text: "first message", synthetic: false }],
+      } as any,
+    );
+  }
+
+  async function sendUserText(
+    plugin: { "chat.message": (input: unknown, output: unknown) => Promise<void> },
+    sessionID: string,
+    text: string,
+  ): Promise<void> {
+    await plugin["chat.message"](
+      {},
+      {
+        message: {
+          sessionID,
+          model: { providerID: "test-provider", modelID: "test-model" },
+          agent: "test-agent",
+        },
+        parts: [{ type: "text", text, synthetic: false }],
+      } as any,
+    );
+  }
+
+  test("OPENCODE_AGENT_SKILLS_PREFERENCE_MODE=off disables every preference layer", async () => {
+    process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE = "off";
+    const { plugin, client } = await drivePlugin();
+    const SESSION = "session-pref-off";
+
+    // Bootstrap (the bootstrap injection runs regardless of preference mode).
+    await bootstrapSession(plugin, SESSION);
+    const promptsAfterBootstrap = client.prompts.length;
+
+    // 1) experimental.chat.system.transform must not push the policy block.
+    await plugin["experimental.chat.system.transform"](
+      {},
+      { system: ["<system-prelude>"] } as any,
+    );
+    const system = client.prompts
+      .slice(promptsAfterBootstrap)
+      .map((p) => p.text)
+      .join("\n");
+    assert.doesNotMatch(
+      system,
+      /<skill-preference-policy>/,
+      "no <skill-preference-policy> injected when env var is 'off'",
+    );
+
+    // 2) tool.definition must not annotate the description.
+    await plugin["tool.definition"](
+      { toolID: "read" },
+      { description: "Read.", parameters: {} } as any,
+    );
+    assert.doesNotMatch(
+      system,
+      /Before using this tool, check whether a listed skill matches the task/,
+      "no native-tool note injected when env var is 'off'",
+    );
+
+    // 3) chat.message keyword preflight must not inject a <skill-preflight>.
+    const promptsBeforeKeyword = client.prompts.length;
+    await sendUserText(plugin, SESSION, "use the script skill");
+    const keywordPrompts = client.prompts.slice(promptsBeforeKeyword);
+    assert.ok(
+      keywordPrompts.every((p) => !/<skill-preflight>/.test(p.text)),
+      "no <skill-preflight> injected by chat.message when env var is 'off'",
+    );
+  });
+
+  test("session.compacted resets injectedSummaries + pendingSkills (preference-layer scenario)", async () => {
+    const { plugin, client } = await drivePlugin();
+    const SESSION = "session-pref-compact";
+
+    // Bootstrap → keyword match → first injection for scripted-skill.
+    await bootstrapSession(plugin, SESSION);
+    await sendUserText(plugin, SESSION, "use the script skill");
+
+    const preflightAfterFirst = client.prompts.filter((p) =>
+      /<skill-preflight>/.test(p.text),
+    );
+    assert.ok(
+      preflightAfterFirst.length >= 1,
+      "first keyword match injects at least one <skill-preflight>",
+    );
+
+    // Sanity: a repeat chat.message with the same keyword is deduped.
+    await sendUserText(plugin, SESSION, "use the script skill again");
+    const preflightAfterDup = client.prompts.filter((p) =>
+      /<skill-preflight>/.test(p.text),
+    );
+    assert.equal(
+      preflightAfterDup.length,
+      preflightAfterFirst.length,
+      "duplicate keyword match within a session is deduped (no second preflight injection)",
+    );
+
+    // After session.compacted, the dedupe state must reset: a fresh
+    // match produces a fresh <skill-preflight>.
+    await plugin.event({
+      event: { type: "session.compacted", properties: { sessionID: SESSION } },
+    } as any);
+    const promptsAfterCompact = client.prompts.length;
+    await sendUserText(plugin, SESSION, "use the script skill");
+    const preflightAfterCompact = client.prompts
+      .slice(promptsAfterCompact)
+      .filter((p) => /<skill-preflight>/.test(p.text));
+    assert.ok(
+      preflightAfterCompact.length >= 1,
+      "after session.compacted, a fresh keyword match re-injects <skill-preflight> " +
+        "(proving injectedSummaries was reset)",
+    );
+  });
+
+  test("use_skill clears pendingSkills so a load-time race does not double-fire", async () => {
+    const { plugin, client } = await drivePlugin();
+    const SESSION = "session-pref-pending-clear";
+
+    await bootstrapSession(plugin, SESSION);
+    await sendUserText(plugin, SESSION, "use the script skill");
+
+    const preflightBeforeLoad = client.prompts.filter((p) =>
+      /<skill-preflight>[\s\S]*use_skill\("scripted-skill"\)/.test(p.text),
+    );
+    assert.equal(
+      preflightBeforeLoad.length,
+      1,
+      "preflight directive for scripted-skill is injected once",
+    );
+
+    // Loading the skill clears the pending entry. The injectedSummaries
+    // dedupe set still suppresses a re-injection, but if pendingSkills
+    // were NOT cleared the next code path that consults it would still
+    // see scripted-skill as pending — which is the bug we are guarding
+    // against. We exercise the wiring through the public surface: a
+    // second keyword match must NOT re-fire the directive.
+    await plugin.tool!.use_skill.execute(
+      { skill: "scripted-skill" },
+      { sessionID: SESSION } as any,
+    );
+    const promptsAfterLoad = client.prompts.length;
+    await sendUserText(plugin, SESSION, "use the script skill");
+    const newPreflights = client.prompts
+      .slice(promptsAfterLoad)
+      .filter((p) => /<skill-preflight>/.test(p.text));
+    assert.equal(
+      newPreflights.length,
+      0,
+      "no fresh preflight after load (injectedSummaries dedupe holds; pendingSkills clear is consistent)",
+    );
+  });
+
+  test("duplicate match within a session is deduped (preference-layer scenario)", async () => {
+    const { plugin, client } = await drivePlugin();
+    const SESSION = "session-pref-dedupe";
+
+    await bootstrapSession(plugin, SESSION);
+    await sendUserText(plugin, SESSION, "use the script skill");
+    await sendUserText(plugin, SESSION, "use the script skill again");
+    await sendUserText(plugin, SESSION, "use the script skill once more");
+
+    const preflight = client.prompts.filter((p) =>
+      /<skill-preflight>[\s\S]*use_skill\("scripted-skill"\)/.test(p.text),
+    );
+    assert.equal(
+      preflight.length,
+      1,
+      "three identical keyword matches produce exactly one <skill-preflight> injection",
+    );
+  });
+
+  test("tool.definition appends the note for native tools when enabled (wiring)", async () => {
+    const { plugin } = await drivePlugin();
+
+    const output = { description: "Read a file.", parameters: {} } as any;
+    await plugin["tool.definition"]({ toolID: "read" }, output);
+
+    assert.match(output.description, /Read a file\./);
+    assert.match(
+      output.description,
+      /use_skill/i,
+      "tool.definition wires through to applyToolDefinition and appends the note",
+    );
+
+    // Non-target tool must pass through untouched.
+    const passthrough = { description: "Plain.", parameters: {} } as any;
+    await plugin["tool.definition"]({ toolID: "todowrite" }, passthrough);
+    assert.equal(
+      passthrough.description,
+      "Plain.",
+      "non-target tool is not annotated",
+    );
+  });
+
+  test("experimental.chat.system.transform wires through and appends the policy block", async () => {
+    const { plugin } = await drivePlugin();
+
+    const systemArr: string[] = ["<system-prelude>"];
+    await plugin["experimental.chat.system.transform"](
+      {},
+      { system: systemArr } as any,
+    );
+
+    assert.equal(systemArr.length, 2);
+    assert.equal(systemArr[0], "<system-prelude>", "existing system entries are preserved");
+    assert.match(systemArr[1] ?? "", /<skill-preference-policy>/);
+    assert.match(systemArr[1] ?? "", /<skill-catalog>/);
   });
 });

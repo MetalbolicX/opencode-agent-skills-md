@@ -47,6 +47,12 @@ export { findClosestMatch, levenshtein } from "./match";
 export { formatSkillListing, renderAvailableSkillsBlock } from "./content";
 
 export {
+  isPreferenceModeEnabled,
+  renderSkillPreflightBlock,
+  renderSkillPreferenceSystemBlock,
+} from "./preference";
+
+export {
   escapeRegex,
   keywordMatch,
   scoreSkill,

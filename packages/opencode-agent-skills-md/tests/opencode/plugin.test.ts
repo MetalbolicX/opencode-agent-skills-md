@@ -245,12 +245,12 @@ describe("use_skill callback wiring (PR 1)", () => {
     await sendMessage(plugin, SESSION, "use the script skill");
     const newPrompts = client.prompts.slice(promptsBeforeRepeat);
     const evaluationInjections = newPrompts.filter((p) =>
-      /<skill-evaluation-required>/.test(p.text),
+      /<skill-preflight>/.test(p.text),
     );
     for (const prompt of evaluationInjections) {
       assert.doesNotMatch(
         prompt.text,
-        /^- scripted-skill:/m,
+        /use_skill\("scripted-skill"\)/,
         "loaded-skill state must suppress scripted-skill from re-injection",
       );
     }
@@ -349,9 +349,9 @@ describe("plugin refactor (PR 2)", () => {
     await sendMessage(pluginB, "shared-session-id", "use the script skill");
     const evaluationB = clientB.prompts
       .slice(promptsBBeforeKeyword)
-      .filter((p) => /<skill-evaluation-required>/.test(p.text));
+      .filter((p) => /<skill-preflight>/.test(p.text));
     assert.ok(
-      evaluationB.some((p) => /^- scripted-skill:/m.test(p.text)),
+      evaluationB.some((p) => /use_skill\("scripted-skill"\)/.test(p.text)),
       "plugin B sees scripted-skill as not-loaded (its own loaded set is independent)",
     );
   });
@@ -393,7 +393,7 @@ describe("plugin refactor (PR 2)", () => {
     assert.ok(client.prompts.some((p) => /<available-skills>/.test(p.text)), "first injects available-skills");
     assert.ok(client.prompts.some((p) => /You have superpowers\./.test(p.text)), "first injects superpowers");
     assert.ok(
-      !client.prompts.some((p) => /<skill-evaluation-required>/.test(p.text)),
+      !client.prompts.some((p) => /<skill-preflight>/.test(p.text)),
       "first message does NOT run matcher",
     );
 
@@ -403,9 +403,9 @@ describe("plugin refactor (PR 2)", () => {
     await sendMessage(plugin, SESSION, "use the script skill");
     const newPrompts = client.prompts.slice(before);
     assert.ok(!newPrompts.some((p) => /<available-skills>/.test(p.text)), "subsequent does NOT re-inject available-skills");
-    const evals = newPrompts.filter((p) => /<skill-evaluation-required>/.test(p.text));
+    const evals = newPrompts.filter((p) => /<skill-preflight>/.test(p.text));
     for (const p of evals) {
-      assert.doesNotMatch(p.text, /^- scripted-skill:/m, "loaded skills are filtered from match");
+      assert.doesNotMatch(p.text, /use_skill\("scripted-skill"\)/, "loaded skills are filtered from match");
     }
   });
 });
