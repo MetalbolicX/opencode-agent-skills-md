@@ -1,6 +1,6 @@
 {
   "name": "opencode-agent-skills-md-workspace",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "pnpm workspace root for opencode-agent-skills-md. The user-facing OpenCode plugin lives at packages/opencode-agent-skills-md and the portable engine at packages/core. This manifest exists only to wire the workspace — it has no exports of its own; consumers install one of the workspace packages directly.",
   "author": "Josh Thomas <josh@joshthomas.dev>",
