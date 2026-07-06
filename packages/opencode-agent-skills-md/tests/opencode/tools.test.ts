@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { after, before, describe, test } from "node:test";
+import { after, afterEach, before, beforeEach, describe, mock, test } from "node:test";
+import {
+  createFixtureWorkspace,
+  createMockOpencodeClient,
+  createShellRecorder,
+  type FixtureWorkspace,
+} from "../integration/helpers/mock-opencode";
 import { createOpencodeSkillHost } from "../../src/host";
 import { createSkillTools, resolveSkillOrSuggest } from "../../src/tools";
 
@@ -186,28 +192,202 @@ describe("resolveSkillOrSuggest", () => {
     }
   });
 
-  test("returns the skill name on hit", async () => {
+  test("returns the resolved Skill on hit", async () => {
     const result = await resolveSkillOrSuggest(workspace, "alpha");
-    assert.equal(result, "alpha");
+    assert.equal(result.ok, true, "hit must surface ok:true");
+    if (result.ok) {
+      assert.equal(result.skill.name, "alpha");
+      assert.ok(typeof result.skill.path === "string" && result.skill.path.length > 0,
+        "the resolved Skill carries the on-disk path");
+    }
   });
 
   test("returns a Did-you-mean message on miss with a close match", async () => {
     // "alph" is a prefix of "alpha" — findClosestMatch scores this well above
     // its 0.4 threshold, so the helper must surface the suggestion.
     const result = await resolveSkillOrSuggest(workspace, "alph");
-    assert.equal(
-      result,
-      `Skill "alph" not found. Did you mean "alpha"?`,
-    );
+    assert.equal(result.ok, false, "miss must surface ok:false");
+    if (!result.ok) {
+      assert.equal(
+        result.message,
+        `Skill "alph" not found. Did you mean "alpha"?`,
+      );
+    }
   });
 
   test("returns the bare not-found message when no close match exists", async () => {
     // Far from any fixture; nothing in the project's `.opencode/skills` will
     // score above the findClosestMatch threshold.
     const result = await resolveSkillOrSuggest(workspace, "xyzzy");
-    assert.equal(
-      result,
-      `Skill "xyzzy" not found. Use get_available_skills to list available skills.`,
-    );
+    assert.equal(result.ok, false, "miss must surface ok:false");
+    if (!result.ok) {
+      assert.equal(
+        result.message,
+        `Skill "xyzzy" not found. Use get_available_skills to list available skills.`,
+      );
+    }
+  });
+});
+
+/**
+ * Unit 1 (plan 015) — Single-pass discovery.
+ *
+ * Each tool invocation (`use_skill`, `read_skill_file`, `run_skill_script`)
+ * MUST complete a successful resolution with a single discovery pass.
+ * Pre-refactor, the tools called `resolveSkillOrSuggest` (which discovers)
+ * and then re-discovered again to obtain the full `Skill` object —
+ * two `discoverAllSkills` calls per invocation.
+ *
+ * The fixture's `shared-skill` is duplicated across project and user
+ * roots, so each `discoverAllSkills` call emits exactly one
+ * `console.warn` via `defaultOnDuplicate`. Counting those warnings
+ * gives a deterministic proxy for the discovery count, identical to
+ * the pattern already used by `tests/opencode/plugin.test.ts`.
+ */
+describe("single-pass tool discovery (R-skill-tool-discovery)", () => {
+  let workspace: FixtureWorkspace;
+  const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+
+  beforeEach(async () => {
+    workspace = await createFixtureWorkspace();
+    process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = "true";
+  });
+
+  afterEach(async () => {
+    if (workspace) {
+      await workspace.cleanup();
+    }
+    if (previousSuperpowersMode === undefined) {
+      delete process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
+    } else {
+      process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE = previousSuperpowersMode;
+    }
+  });
+
+  /** Build a counting predicate that filters to duplicate-discovery warnings only. */
+  function discoveryCount(warnSpy: ReturnType<typeof mock.method>): () => number {
+    return () => warnSpy.mock.calls.filter(
+      (c) => typeof c.arguments[0] === "string"
+        && (c.arguments[0] as string).startsWith("Skill name conflict:"),
+    ).length;
+  }
+
+  test("use_skill runs exactly one discovery pass per successful invocation", async () => {
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const shell = createShellRecorder();
+    const tools = createSkillTools(host, shell.shell, workspace.projectRoot);
+
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const countBefore = discoveryCount(warnSpy)();
+      const result = await tools.UseSkill.execute(
+        { skill: "scripted-skill" },
+        { sessionID: "one-pass-use-skill" } as any,
+      );
+      const discovered = discoveryCount(warnSpy)() - countBefore;
+      assert.match(result, /loaded\./i, "use_skill reports a successful load");
+      assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful use_skill");
+    } finally {
+      warnSpy.mock.restore();
+    }
+  });
+
+  test("read_skill_file runs exactly one discovery pass per successful invocation", async () => {
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const shell = createShellRecorder();
+    const tools = createSkillTools(host, shell.shell, workspace.projectRoot);
+
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const countBefore = discoveryCount(warnSpy)();
+      const result = await tools.ReadSkillFile.execute(
+        { skill: "scripted-skill", filename: "docs/reference.md" },
+        { sessionID: "one-pass-read-skill-file" } as any,
+      );
+      const discovered = discoveryCount(warnSpy)() - countBefore;
+      assert.match(result, /loaded\./i, "read_skill_file reports a successful read");
+      assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful read_skill_file");
+    } finally {
+      warnSpy.mock.restore();
+    }
+  });
+
+  test("run_skill_script runs exactly one discovery pass per successful invocation", async () => {
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const shell = createShellRecorder();
+    const tools = createSkillTools(host, shell.shell, workspace.projectRoot);
+
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const countBefore = discoveryCount(warnSpy)();
+      const result = await tools.RunSkillScript.execute(
+        { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["one"] },
+        { sessionID: "one-pass-run-skill-script" } as any,
+      );
+      const discovered = discoveryCount(warnSpy)() - countBefore;
+      assert.ok(typeof result === "string", "run_skill_script returns a string result");
+      assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful run_skill_script");
+    } finally {
+      warnSpy.mock.restore();
+    }
+  });
+
+  /**
+   * Triangulation: a missing skill must keep its existing miss-message
+   * contract. The resolver still discovers once (to score suggestions),
+   * but the tool body MUST NOT trigger a second discovery before
+   * returning the miss. This pins both the discovery count and the
+   * existing user-facing message text.
+   */
+  test("missing skill preserves the Did-you-mean miss message and runs one discovery", async () => {
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const shell = createShellRecorder();
+    const tools = createSkillTools(host, shell.shell, workspace.projectRoot);
+
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const countBefore = discoveryCount(warnSpy)();
+      const result = await tools.UseSkill.execute(
+        { skill: "scripte-skill" }, // typo close to scripted-skill
+        { sessionID: "miss-with-suggestion" } as any,
+      );
+      const discovered = discoveryCount(warnSpy)() - countBefore;
+      assert.match(
+        result,
+        /Skill "scripte-skill" not found\. Did you mean "scripted-skill"\?/,
+        "miss message preserves the existing Did-you-mean contract",
+      );
+      assert.equal(discovered, 1, "missing skill resolution still runs exactly one discovery");
+    } finally {
+      warnSpy.mock.restore();
+    }
+  });
+
+  test("missing skill with no close match preserves the bare not-found message and runs one discovery", async () => {
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const shell = createShellRecorder();
+    const tools = createSkillTools(host, shell.shell, workspace.projectRoot);
+
+    // Pick a string whose characters and length keep the Levenshtein score
+    // below the 0.4 threshold against every fixture skill name, so the
+    // helper falls through to the bare not-found message.
+    const FAR_OFF_NAME = "zzqqxxccvvbbnnmm";
+    const warnSpy = mock.method(console, "warn", () => {});
+    try {
+      const countBefore = discoveryCount(warnSpy)();
+      const result = await tools.ReadSkillFile.execute(
+        { skill: FAR_OFF_NAME, filename: "anything.md" },
+        { sessionID: "miss-no-suggestion" } as any,
+      );
+      const discovered = discoveryCount(warnSpy)() - countBefore;
+      assert.match(
+        result,
+        new RegExp(`Skill "${FAR_OFF_NAME}" not found\\. Use get_available_skills to list available skills\\.`),
+        "miss message preserves the bare not-found contract",
+      );
+      assert.equal(discovered, 1, "missing skill resolution still runs exactly one discovery");
+    } finally {
+      warnSpy.mock.restore();
+    }
   });
 });

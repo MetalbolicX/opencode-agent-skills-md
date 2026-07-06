@@ -13,15 +13,16 @@
 
 import type { PluginInput } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   discoverAllSkills,
   findClosestMatch,
-  isPathSafe,
   listSkillFiles,
   resolveSkill,
   searchSkills,
 } from "opencode-agent-skills-md-core";
+import type { Skill } from "opencode-agent-skills-md-core";
 import type { OpencodeSkillHost } from "./host";
 
 /** Escape XML special characters to prevent wrapper breakout. */
@@ -108,41 +109,104 @@ export const createSkillTools = (
 };
 
 /**
+ * Discriminated return shape for {@link resolveSkillOrSuggest}.
+ *
+ * `ok: true`  → the resolver found the skill and returns its full
+ *               `Skill` object. Callers can read `path`, `scripts`,
+ *               `template`, etc. without a second discovery pass.
+ * `ok: false` → the resolver did not find the skill. `message` is the
+ *               existing miss/suggestion string the tool surface
+ *               returns to the model verbatim.
+ */
+export type SkillResolution =
+  | { ok: true; skill: Skill }
+  | { ok: false; message: string };
+
+/**
  * Resolve a skill by name, or return a "not found" message with a
  * close-match suggestion.
  *
  * Centralizes the duplicated resolve-then-suggest pattern that
  * `use_skill`, `read_skill_file`, and `run_skill_script` all need.
- * Returning a single `string` keeps the call site trivial:
  *
- *   - skill found              → returns `skill.name`
- *   - skill missing, suggestion → `Skill "<name>" not found. Did you mean "<suggestion>"?`
- *   - skill missing, no hint    → `Skill "<name>" not found. Use get_available_skills to list available skills.`
+ *   - skill found              → `{ ok: true, skill }`
+ *   - skill missing, suggestion → `{ ok: false, message }` carrying
+ *     `Skill "<name>" not found. Did you mean "<suggestion>"?`
+ *   - skill missing, no hint    → `{ ok: false, message }` carrying
+ *     `Skill "<name>" not found. Use get_available_skills to list available skills.`
  *
- * Not-found messages always start with the literal `Skill "` so callers
- * can detect them with `result.startsWith('Skill "')`. The skill-name
- * regex (`/^[\p{Ll}\p{N}-]+$/u`) forbids uppercase initial characters,
- * so a legitimate skill name can never collide with that prefix.
+ * Returning the resolved `Skill` object lets the consuming tool skip
+ * the second `discoverAllSkills` pass it used to need to read its
+ * `path`, `scripts`, and `template`. Each tool invocation now runs
+ * exactly one discovery pass on the happy path.
  *
- * The helper does its own discovery; callers that need the `Skill` object
- * (rather than just its name) re-resolve via a second `discoverAllSkills`
- * call. Discovery is cheap (file-listing only) and the OS-level metadata
- * cache absorbs most of the cost.
+ * Not-found messages still start with the literal `Skill "` so any
+ * future consumer that wants to detect misses with a prefix check
+ * (e.g. legacy callers) keeps working unchanged.
  */
 export const resolveSkillOrSuggest = async (
   directory: string,
   skillName: string
-): Promise<string> => {
+): Promise<SkillResolution> => {
   const skillsByName = await discoverAllSkills(directory);
   const skill = resolveSkill(skillName, skillsByName);
-  if (skill) return skill.name;
+  if (skill) return { ok: true, skill };
 
   const allSkillNames = Array.from(skillsByName.values()).map(s => s.name);
   const suggestion = findClosestMatch(skillName, allSkillNames);
   if (suggestion) {
-    return `Skill "${skillName}" not found. Did you mean "${suggestion}"?`;
+    return {
+      ok: false,
+      message: `Skill "${skillName}" not found. Did you mean "${suggestion}"?`,
+    };
   }
-  return `Skill "${skillName}" not found. Use get_available_skills to list available skills.`;
+  return {
+    ok: false,
+    message: `Skill "${skillName}" not found. Use get_available_skills to list available skills.`,
+  };
+};
+
+/**
+ * Resolve a skill-relative filename to the canonical realpath the host
+ * should read, or `null` if the filename escapes the skill directory.
+ *
+ * Closes the TOCTOU window that the old `isPathSafe` + `path.join`
+ * pair left open. The pre-fix code computed `path.join(skill.path,
+ * filename)` for the read, while `isPathSafe` validated the canonical
+ * realpath — those two values can disagree when a symlink (or, in
+ * adversarial cases, a filesystem race) is swapped between the check
+ * and the read. The validation would pass on one canonical path and
+ * the read would target a different file.
+ *
+ * The fix: compute the canonical realpath once, validate it, and
+ * return it so the caller passes the SAME path into
+ * `host.client.readFile`. There is no second `path.join` against a
+ * possibly-stale logical path.
+ *
+ * Returns:
+ *   - The canonical realpath of `path.join(skillPath, filename)`
+ *     when it lies inside `skillPath` (covers the safe-path scenario).
+ *   - `null` when the path is outside `skillPath`, when either
+ *     `realpath` call throws (missing file, broken symlink, etc.), or
+ *     when the resolved realpath equals the skill directory itself
+ *     without the trailing separator (i.e. the request resolves to
+ *     the skill directory, not a file under it).
+ */
+export const resolveSafeSkillFilePath = async (
+  skillPath: string,
+  filename: string
+): Promise<string | null> => {
+  const resolved = path.join(skillPath, filename);
+  try {
+    const resolvedReal = await fs.realpath(resolved);
+    const baseReal = await fs.realpath(skillPath);
+    if (resolvedReal === baseReal || resolvedReal.startsWith(baseReal + path.sep)) {
+      return resolvedReal;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 };
 
 const GetAvailableSkills = (directory: string): SkillTool => {
@@ -202,26 +266,22 @@ const ReadSkillFile = (directory: string, host: OpencodeSkillHost): SkillTool =>
         .describe("File to read, relative to skill directory (e.g., 'anthropic-best-practices.md', 'scripts/helper.sh')")
     },
     async execute(args, ctx) {
-      const resolved = await resolveSkillOrSuggest(directory, args.skill);
-      if (resolved.startsWith('Skill "')) return resolved;
+      const resolution = await resolveSkillOrSuggest(directory, args.skill);
+      if (!resolution.ok) return resolution.message;
+      const skill = resolution.skill;
 
-      // Helper confirmed existence; resolve to the full Skill object so we
-      // can read its path, scripts, and other metadata below.
-      const skillsByName = await discoverAllSkills(directory);
-      const skill = skillsByName.get(resolved);
-      if (!skill) {
-        return `Skill "${args.skill}" not found. Use get_available_skills to list available skills.`;
-      }
-
-      // Security: ensure path doesn't escape skill directory
-      if (!(await isPathSafe(skill.path, args.filename))) {
+      // Security: resolve to the canonical realpath the host should
+      // actually read, and verify it lies inside the skill directory.
+      // Returning the canonical path closes the TOCTOU window between
+      // the check and the read — the same path is used for both. A
+      // `null` return keeps the existing invalid-path message.
+      const canonicalPath = await resolveSafeSkillFilePath(skill.path, args.filename);
+      if (canonicalPath === null) {
         return `Invalid path: cannot access files outside skill directory.`;
       }
 
-      const filePath = path.join(skill.path, args.filename);
-
       try {
-        const content = await host.client.readFile(filePath);
+        const content = await host.client.readFile(canonicalPath);
 
         // Inject via noReply for context persistence
         const wrappedContent = `<skill-file skill="${escapeXml(skill.name)}" file="${escapeXml(args.filename)}">
@@ -262,16 +322,9 @@ const RunSkillScript = (directory: string, $: PluginInput["$"]): SkillTool => {
         .describe("Arguments to pass to the script")
     },
     async execute(args) {
-      const resolved = await resolveSkillOrSuggest(directory, args.skill);
-      if (resolved.startsWith('Skill "')) return resolved;
-
-      // Helper confirmed existence; resolve to the full Skill object so we
-      // can inspect its scripts and run them below.
-      const skillsByName = await discoverAllSkills(directory);
-      const skill = skillsByName.get(resolved);
-      if (!skill) {
-        return `Skill "${args.skill}" not found. Use get_available_skills to list available skills.`;
-      }
+      const resolution = await resolveSkillOrSuggest(directory, args.skill);
+      if (!resolution.ok) return resolution.message;
+      const skill = resolution.skill;
 
       const script = skill.scripts.find(s => s.relativePath === args.script);
 
@@ -320,16 +373,9 @@ const UseSkill = (
         .describe("Name of the skill (e.g., 'brainstorming', 'project:my-skill', 'user:my-skill')")
     },
     async execute(args, ctx) {
-      const resolved = await resolveSkillOrSuggest(directory, args.skill);
-      if (resolved.startsWith('Skill "')) return resolved;
-
-      // Helper confirmed existence; resolve to the full Skill object so we
-      // can read its template, scripts, and files for injection below.
-      const skillsByName = await discoverAllSkills(directory);
-      const skill = skillsByName.get(resolved);
-      if (!skill) {
-        return `Skill "${args.skill}" not found. Use get_available_skills to list available skills.`;
-      }
+      const resolution = await resolveSkillOrSuggest(directory, args.skill);
+      if (!resolution.ok) return resolution.message;
+      const skill = resolution.skill;
 
       const skillFiles = await listSkillFiles(skill.path);
 
