@@ -18,13 +18,18 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+## [1.3.0]
+
 ### Changed
 
 - **Workspace split**: the repository now publishes two packages from a single pnpm workspace. The reusable, host-agnostic skills engine lives at [`opencode-agent-skills-md-core`](packages/core) and the OpenCode plugin adapter lives at [`opencode-agent-skills-md`](packages/opencode-agent-skills-md). The plugin package now consumes the core engine through a workspace dependency instead of relative source imports. The repo root is a private workspace manifest whose `build`, `test`, and `typecheck` scripts delegate to both packages via `pnpm -r`.
+- **Manual publish polish**: the `opencode-agent-skills-md` package manifest now declares `publishConfig.access = "public"` and a `prepublishOnly` hook that runs `pnpm run build`, so publishing from a fresh checkout is safe and reproducible. The root workspace manifest pins `pnpm@11.10.0` via the `packageManager` field for the same reason.
 
 ### Added
 
 - The `opencode-agent-skills-md-core` package is published as a standalone ESM module so custom harnesses, CLIs, and test fixtures can embed the skills engine without pulling `@opencode-ai/plugin`. Consumers implement the `SkillHostClient` / `SkillHostSession` boundary contracts declared in `packages/core/src/types.ts` against their own host.
+- Added the `oas update` command: detects when the locally installed package is stale relative to the registry, supports purging the local skill cache, exposes a recovery command, and supports a `--dry-run` to preview changes without mutating state.
+- Added a freshness block to `oas status`: in addition to the installed/registered state, it now reports the latest registry version and signals when an update is available, so the maintainer can see at a glance whether to run `oas update`.
 
 ### Removed
 
@@ -159,7 +164,8 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Josh Thomas <josh@joshthomas.dev> (maintainer)
 
-[unreleased]: https://github.com/MetalbolicX/opencode-agent-skills-md/compare/v0.7.0...HEAD
+[unreleased]: https://github.com/MetalbolicX/opencode-agent-skills-md/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v1.3.0
 [0.1.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.1.0
 [0.2.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.2.0
 [0.3.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.3.0

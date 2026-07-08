@@ -16,7 +16,7 @@ build:
 # Install dev plugin locally (project-scoped stub that re-exports the built bundle)
 install: build
     mkdir -p .opencode/plugins
-    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills-md/dist/opencode/index.js";\n' > .opencode/plugins/skills.js
+    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills-md/dist/plugin.mjs";\n' > .opencode/plugins/skills.js
 
 # Uninstall local plugin copy
 uninstall:
@@ -37,3 +37,11 @@ test-workspace:
 # Typecheck both workspace packages
 typecheck:
     pnpm run typecheck
+
+# Verify the manual publish flow end-to-end without publishing: install, typecheck, test, pack, and dry-run the package contents.
+release-check:
+    pnpm install --frozen-lockfile
+    pnpm run typecheck
+    pnpm test
+    pnpm -F opencode-agent-skills-md pack
+    cd packages/opencode-agent-skills-md && npm pack --dry-run

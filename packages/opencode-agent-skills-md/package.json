@@ -1,6 +1,6 @@
 {
   "name": "opencode-agent-skills-md",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "OpenCode adapter for the opencode-agent-skills-md workspace: plugin factory, host, and the four skill tools.",
   "type": "module",
   "main": "./dist/plugin.mjs",
@@ -24,8 +24,12 @@
     "build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build",
     "pretest": "npm run build",
+    "prepublishOnly": "pnpm run build",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "yaml": "^2.9.0"
