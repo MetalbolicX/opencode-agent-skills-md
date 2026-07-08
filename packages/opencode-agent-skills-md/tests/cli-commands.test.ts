@@ -15,7 +15,8 @@
  *     preserving unrelated entries, `--purge` candidate path reporting
  *     (dry-run only), `--dry-run` no-write, malformed-config abort.
  *   - `runStatus` — installed vs. uninstalled states, `extras` reporting,
- *     `.jsonc` format detection.
+ *     `.jsonc` format detection, freshness block.
+ *   - `runUpdate` — stale / current / registry-fail / dry-run branches.
  *   - `runDoctor` — Node version OK path, config shape validation, plugin
  *     duplicate-count warning, writability-probe natural "missing dir" path.
  *   - `runMain` — valid dispatch (exit 0), missing command (exit 2),
@@ -30,6 +31,7 @@
 
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   BACKUP_LIMIT,
   PLUGIN_NAME,
@@ -49,6 +51,7 @@ import {
 import { runInstall, type InstallOptions } from "../src/cli/install";
 import { runMain, type MainResult } from "../src/cli/main";
 import { type DoctorResult, runDoctor, runStatus, type StatusResult } from "../src/cli/status";
+import { runUpdate, type UpdateResult } from "../src/cli/update";
 import { cachePath, pluginConfigPath, runUninstall, type UninstallOptions } from "../src/cli/uninstall";
 
 // ---------------------------------------------------------------------------
@@ -226,6 +229,7 @@ const captureConsoleAll = (): {
 // ---------------------------------------------------------------------------
 
 const ENV_BACKUP = { ...process.env };
+const PACKAGE_JSON_PATH = fileURLToPath(new URL("../package.json", import.meta.url));
 
 const restoreEnv = () => {
   for (const key of new Set([...Object.keys(process.env), ...Object.keys(ENV_BACKUP)])) {
@@ -909,7 +913,7 @@ describe("runUninstall", () => {
   const targetPath = "/home/x/.config/opencode/opencode.json";
 
   const newFs = (initial: Record<string, string> = {}): ReturnType<typeof createMemoryFs> => {
-    return createMemoryFs(initial);
+    return createMemoryFs({ [PACKAGE_JSON_PATH]: JSON.stringify({ version: "1.2.0" }), ...initial });
   };
 
   const env = (): NodeJS.ProcessEnv => ({ HOME: "/home/x" });
@@ -1112,22 +1116,25 @@ describe("runStatus", () => {
   const targetPath = "/home/x/.config/opencode/opencode.json";
 
   const newFs = (initial: Record<string, string> = {}): ReturnType<typeof createMemoryFs> => {
-    return createMemoryFs(initial);
+    return createMemoryFs({ [PACKAGE_JSON_PATH]: JSON.stringify({ version: "1.2.0" }), ...initial });
   };
 
-  test("installed state: oas entry present → installed:true and specifier set", () => {
+  test("installed state: oas entry present → installed:true and specifier set", async () => {
     const fs = newFs({
       [targetPath]: JSON.stringify({ plugin: ["alpha@1.0.0", PLUGIN_NAME] }, null, 2),
     });
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => "1.0.1");
       assert.equal(result.installed, true);
       assert.equal(result.specifier, PLUGIN_NAME);
       assert.equal(result.path, targetPath);
       assert.equal(result.format, "json");
       // extras excludes the oas entry.
       assert.deepEqual(result.extras, ["alpha@1.0.0"]);
+      assert.equal(result.installedVersion, "1.2.0");
+      assert.equal(result.latestVersion, "1.0.1");
+      assert.equal(result.updateAvailable, false);
       assert.match(captured.log(), new RegExp(`Installed:\\s+yes`));
       assert.match(captured.log(), new RegExp(`Specifier:\\s+${PLUGIN_NAME.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}`));
     } finally {
@@ -1135,13 +1142,13 @@ describe("runStatus", () => {
     }
   });
 
-  test("versioned specifier is reported verbatim", () => {
+  test("versioned specifier is reported verbatim", async () => {
     const fs = newFs({
       [targetPath]: JSON.stringify({ plugin: [`${PLUGIN_NAME}@2.5.0`] }, null, 2),
     });
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => "2.5.0");
       assert.equal(result.installed, true);
       assert.equal(result.specifier, `${PLUGIN_NAME}@2.5.0`);
     } finally {
@@ -1149,21 +1156,23 @@ describe("runStatus", () => {
     }
   });
 
-  test("uninstalled state: empty config → installed:false and specifier:null", () => {
+  test("uninstalled state: empty config → installed:false and specifier:null", async () => {
     const fs = newFs();
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => null);
       assert.equal(result.installed, false);
       assert.equal(result.specifier, null);
       assert.deepEqual(result.extras, []);
+      assert.equal(result.latestVersion, null);
+      assert.equal(result.updateAvailable, null);
       assert.match(captured.log(), new RegExp(`Installed:\\s+no`));
     } finally {
       captured.restore();
     }
   });
 
-  test("extras reporting: non-oas entries surface alongside the oas entry", () => {
+  test("extras reporting: non-oas entries surface alongside the oas entry", async () => {
     const fs = newFs({
       [targetPath]: JSON.stringify(
         { plugin: ["alpha@1.0.0", PLUGIN_NAME, "beta@2.0.0"] },
@@ -1173,7 +1182,7 @@ describe("runStatus", () => {
     });
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => "2.0.0");
       assert.equal(result.installed, true);
       // Order preserved; oas itself is NOT in extras.
       assert.deepEqual(result.extras, ["alpha@1.0.0", "beta@2.0.0"]);
@@ -1183,13 +1192,13 @@ describe("runStatus", () => {
     }
   });
 
-  test("extras only: when no oas entry exists, the `extras` field still surfaces unrelated plugins", () => {
+  test("extras only: when no oas entry exists, the `extras` field still surfaces unrelated plugins", async () => {
     const fs = newFs({
       [targetPath]: JSON.stringify({ plugin: ["alpha", "beta"] }, null, 2),
     });
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => "2.0.0");
       assert.equal(result.installed, false);
       assert.equal(result.specifier, null);
       // The structured `extras` field captures every non-oas plugin, even
@@ -1204,7 +1213,7 @@ describe("runStatus", () => {
     }
   });
 
-  test("format detection: a .jsonc config reports format=jsonc", () => {
+  test("format detection: a .jsonc config reports format=jsonc", async () => {
     const fs = newFs({
       "/home/x/.config/opencode/opencode.jsonc": JSON.stringify(
         { plugin: [PLUGIN_NAME] },
@@ -1214,10 +1223,157 @@ describe("runStatus", () => {
     });
     const captured = captureConsoleAll();
     try {
-      const result: StatusResult = runStatus(fs as unknown as CliFs);
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => "2.0.0");
       assert.equal(result.format, "jsonc");
       assert.ok(result.path.endsWith(".jsonc"));
       assert.match(captured.log(), /Format:\s+jsonc/);
+    } finally {
+      captured.restore();
+    }
+  });
+
+  test("freshness block: registry unavailable degrades to unknown", async () => {
+    const fs = newFs({
+      [targetPath]: JSON.stringify({ plugin: [PLUGIN_NAME] }, null, 2),
+    });
+    const captured = captureConsoleAll();
+    try {
+      const result: StatusResult = await runStatus(fs as unknown as CliFs, async () => null);
+      assert.equal(result.installedVersion, "1.2.0");
+      assert.equal(result.latestVersion, null);
+      assert.equal(result.updateAvailable, null);
+      assert.match(captured.log(), /Installed version:\s+1\.2\.0/);
+      assert.match(captured.log(), /Latest version:\s+unknown/);
+      assert.match(captured.log(), /Update available:\s+unknown/);
+    } finally {
+      captured.restore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runUpdate
+// ---------------------------------------------------------------------------
+
+describe("runUpdate", () => {
+  const newFs = (version: string | null): CliFs =>
+    ({
+      readFileSync(path: string) {
+        if (path !== PACKAGE_JSON_PATH || version === null) {
+          throw new Error(`ENOENT: no such file '${path}'`);
+        }
+        return JSON.stringify({ version });
+      },
+      writeFileSync() {
+        throw new Error("not used");
+      },
+      renameSync() {
+        throw new Error("not used");
+      },
+      copyFileSync() {
+        throw new Error("not used");
+      },
+      unlinkSync() {
+        throw new Error("not used");
+      },
+      mkdirSync() {
+        throw new Error("not used");
+      },
+      readdirSync() {
+        return [];
+      },
+      existsSync() {
+        return true;
+      },
+    }) as unknown as CliFs;
+
+  test("stale version purges cache and prints the canonical recovery command", async () => {
+    const fs = newFs("1.0.0");
+    const captured = captureConsoleAll();
+    const purged: string[] = [];
+    try {
+      const result: UpdateResult = await runUpdate(
+        {},
+        fs,
+        async () => "1.2.0",
+        (target) => {
+          purged.push(target);
+          return target;
+        },
+      );
+      assert.equal(result.status, "wrote");
+      assert.equal(result.updateAvailable, true);
+      assert.deepEqual(purged, [cachePath()]);
+      assert.match(captured.log(), /Update available \(1\.0\.0 → 1\.2\.0\)/);
+      assert.match(captured.log(), /npx opencode-agent-skills-md@latest install/);
+    } finally {
+      captured.restore();
+    }
+  });
+
+  test("current version returns noop and does not purge", async () => {
+    const fs = newFs("1.2.0");
+    const captured = captureConsoleAll();
+    let purged = 0;
+    try {
+      const result: UpdateResult = await runUpdate(
+        {},
+        fs,
+        async () => "1.2.0",
+        () => {
+          purged += 1;
+          return cachePath();
+        },
+      );
+      assert.equal(result.status, "noop");
+      assert.equal(purged, 0);
+      assert.match(captured.log(), /Already up to date/);
+    } finally {
+      captured.restore();
+    }
+  });
+
+  test("registry failure returns noop and does not purge", async () => {
+    const fs = newFs("1.0.0");
+    const captured = captureConsoleAll();
+    let purged = 0;
+    try {
+      const result: UpdateResult = await runUpdate(
+        {},
+        fs,
+        async () => null,
+        () => {
+          purged += 1;
+          return cachePath();
+        },
+      );
+      assert.equal(result.status, "noop");
+      assert.equal(result.latestVersion, null);
+      assert.equal(purged, 0);
+      assert.match(captured.log(), /registry version is unavailable/);
+    } finally {
+      captured.restore();
+    }
+  });
+
+  test("dry-run reports the planned purge without touching disk", async () => {
+    const fs = newFs("1.0.0");
+    const captured = captureConsoleAll();
+    let purged = 0;
+    try {
+      const result: UpdateResult = await runUpdate(
+        { dryRun: true },
+        fs,
+        async () => "1.2.0",
+        () => {
+          purged += 1;
+          return cachePath();
+        },
+      );
+      assert.equal(result.status, "planned");
+      assert.equal(purged, 0);
+      assert.match(captured.log(), /\[dry-run\] Would purge:/);
+      assert.match(captured.log(), /\[dry-run\] Next step:/);
     } finally {
       captured.restore();
     }
@@ -1341,15 +1497,15 @@ describe("runMain", () => {
    * `process.exitCode` from any earlier test. Returns the structured
    * result plus a getter for the captured output.
    */
-  const dispatch = (
+  const dispatch = async (
     argv: readonly string[],
-  ): { result: MainResult; captured: ReturnType<typeof captureConsoleAll> } => {
+  ): Promise<{ result: MainResult; captured: ReturnType<typeof captureConsoleAll> }> => {
     const prevExit = process.exitCode;
     process.exitCode = undefined;
     const captured = captureConsoleAll();
     let result: MainResult;
     try {
-      result = runMain(argv);
+      result = await runMain(argv);
     } finally {
       captured.restore();
       // Restore rather than reset, so a previous test's intent is honored.
@@ -1358,66 +1514,72 @@ describe("runMain", () => {
     return { result, captured };
   };
 
-  test("valid dispatch: `oas status` exits 0 with the status command resolved", () => {
-    const { result } = dispatch(["status"]);
+  test("valid dispatch: `oas status` exits 0 with the status command resolved", async () => {
+    const { result } = await dispatch(["status"]);
     assert.equal(result.command, "status");
     assert.equal(result.exitCode, 0);
   });
 
-  test("valid dispatch: `oas doctor` exits 0 when no blocking issues exist", () => {
-    const { result } = dispatch(["doctor"]);
+  test("valid dispatch: `oas update` exits 0 with the update command resolved", async () => {
+    const { result } = await dispatch(["update"]);
+    assert.equal(result.command, "update");
+    assert.equal(result.exitCode, 0);
+  });
+
+  test("valid dispatch: `oas doctor` exits 0 when no blocking issues exist", async () => {
+    const { result } = await dispatch(["doctor"]);
     assert.equal(result.command, "doctor");
     // Doctor found no blocking issues (`ok === true`) → exit 0.
     assert.equal(result.exitCode, 0);
   });
 
-  test("invalid usage: missing command → exit 2 and a friendly stderr hint", () => {
-    const { result, captured } = dispatch([]);
+  test("invalid usage: missing command → exit 2 and a friendly stderr hint", async () => {
+    const { result, captured } = await dispatch([]);
     assert.equal(result.command, null);
     assert.equal(result.exitCode, 2);
     assert.match(captured.error(), /missing command/i);
   });
 
-  test("invalid usage: unknown command → exit 2", () => {
-    const { result, captured } = dispatch(["definitely-not-real"]);
+  test("invalid usage: unknown command → exit 2", async () => {
+    const { result, captured } = await dispatch(["definitely-not-real"]);
     assert.equal(result.command, null);
     assert.equal(result.exitCode, 2);
     assert.match(captured.error(), /unknown command/i);
   });
 
-  test("invalid usage: unknown option → exit 2 (parseArgs strict error)", () => {
-    const { result, captured } = dispatch(["status", "--bogus-option"]);
+  test("invalid usage: unknown option → exit 2 (parseArgs strict error)", async () => {
+    const { result, captured } = await dispatch(["status", "--bogus-option"]);
     assert.equal(result.command, null);
     assert.equal(result.exitCode, 2);
     assert.match(captured.error(), /oas:|--bogus-option/);
   });
 
-  test("--help short-circuits to exit 0 before parseArgs runs", () => {
-    const { result, captured } = dispatch(["--help"]);
+  test("--help short-circuits to exit 0 before parseArgs runs", async () => {
+    const { result, captured } = await dispatch(["--help"]);
     assert.equal(result.command, "help");
     assert.equal(result.exitCode, 0);
     assert.match(captured.log(), /Usage: oas/);
   });
 
-  test("-h short-circuits to exit 0 before parseArgs runs", () => {
-    const { result, captured } = dispatch(["-h"]);
+  test("-h short-circuits to exit 0 before parseArgs runs", async () => {
+    const { result, captured } = await dispatch(["-h"]);
     assert.equal(result.command, "help");
     assert.equal(result.exitCode, 0);
     assert.match(captured.log(), /Usage: oas/);
   });
 
-  test("--help after a positional still wins and exits 0", () => {
-    const { result, captured } = dispatch(["status", "--help"]);
+  test("--help after a positional still wins and exits 0", async () => {
+    const { result, captured } = await dispatch(["status", "--help"]);
     assert.equal(result.command, "help");
     assert.equal(result.exitCode, 0);
     assert.match(captured.log(), /Usage: oas/);
   });
 
-  test("default process.argv when invoked as main is not used in tests (synthetic args only)", () => {
+  test("default process.argv when invoked as main is not used in tests (synthetic args only)", async () => {
     // Sanity: dispatching the bare CLI without argv shouldn't see real
     // process.argv positionals get parsed as commands. We call dispatch
     // with `[]` (not undefined) to keep the helper hermetic.
-    const { result } = dispatch([]);
+    const { result } = await dispatch([]);
     assert.equal(result.exitCode, 2);
   });
 });

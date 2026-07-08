@@ -20,6 +20,7 @@ import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { type CliFs, loadGlobalConfig, matchesPlugin, normalizePlugin, PLUGIN_NAME } from "./config";
 import { createRealFs } from "./real-fs";
+import { fetchLatestVersion, getInstalledVersion, isStale, type LatestVersionFetcher } from "./registry";
 
 export interface StatusResult {
   /** Whether an `opencode-agent-skills-md` entry is present in `plugin`. */
@@ -32,6 +33,12 @@ export interface StatusResult {
   specifier: string | null;
   /** Other plugin entries preserved alongside the oas one. */
   extras: string[];
+  /** Bundled package version read from the local `package.json`. */
+  installedVersion: string | null;
+  /** Latest npm registry version when reachable. */
+  latestVersion: string | null;
+  /** Whether an update is available; `null` when the registry could not be checked. */
+  updateAvailable: boolean | null;
 }
 
 export interface DoctorResult {
@@ -53,12 +60,19 @@ const formatFromPath = (path: string): "json" | "jsonc" =>
  * returns the same data as a structured result so callers (including
  * `main.ts` and tests) can consume it without parsing the message.
  */
-export const runStatus = (fs: CliFs = createRealFs()): StatusResult => {
+export const runStatus = async (
+  fs: CliFs = createRealFs(),
+  fetchLatestVersionFn: LatestVersionFetcher = fetchLatestVersion,
+): Promise<StatusResult> => {
   const loaded = loadGlobalConfig(fs);
   const plugins = normalizePlugin(loaded.config.plugin);
   const oasEntries = plugins.filter(matchesPlugin);
   const extras = plugins.filter((entry) => !matchesPlugin(entry));
   const format = formatFromPath(loaded.path);
+  const installedVersion = getInstalledVersion(fs);
+  const latestVersion = await fetchLatestVersionFn();
+  const updateAvailable = isStale(installedVersion, latestVersion);
+  const specifier = oasEntries[0] ?? null;
 
   console.log(`Config path:    ${loaded.path}`);
   console.log(`Format:         ${format}`);
@@ -66,30 +80,29 @@ export const runStatus = (fs: CliFs = createRealFs()): StatusResult => {
 
   if (oasEntries.length === 0) {
     console.log(`Installed:      no`);
-    return {
-      installed: false,
-      path: loaded.path,
-      format,
-      specifier: null,
-      extras,
-    };
+  } else {
+    // In practice `install` dedupes so at most one oas entry survives;
+    // reporting the first keeps the output stable for scripting.
+    console.log(`Installed:      yes`);
+    console.log(`Specifier:      ${specifier}`);
+    if (extras.length > 0) {
+      console.log(`Other plugins:  ${extras.join(", ")}`);
+    }
   }
 
-  // In practice `install` dedupes so at most one oas entry survives;
-  // reporting the first keeps the output stable for scripting.
-  const specifier = oasEntries[0] ?? null;
-  console.log(`Installed:      yes`);
-  console.log(`Specifier:      ${specifier}`);
-  if (extras.length > 0) {
-    console.log(`Other plugins:  ${extras.join(", ")}`);
-  }
+  console.log(`Installed version: ${installedVersion ?? "unknown"}`);
+  console.log(`Latest version:    ${latestVersion ?? "unknown"}`);
+  console.log(`Update available:  ${updateAvailable === null ? "unknown" : updateAvailable ? "yes" : "no"}`);
 
   return {
-    installed: true,
+    installed: oasEntries.length > 0,
     path: loaded.path,
     format,
     specifier,
     extras,
+    installedVersion,
+    latestVersion,
+    updateAvailable,
   };
 };
 

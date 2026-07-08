@@ -20,6 +20,7 @@ import { realpathSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { runInstall } from "./install";
 import { runDoctor, runStatus } from "./status";
+import { runUpdate } from "./update";
 import { runUninstall } from "./uninstall";
 
 const USAGE = `Usage: oas <command> [options]
@@ -28,6 +29,7 @@ Commands:
   install     Register the plugin in the global OpenCode config
   uninstall   Remove the plugin from the global OpenCode config
   status      Show current installation status
+  update      Refresh the runtime cache and show upgrade guidance
   doctor      Run health checks against the global config
 
 Options (install):
@@ -40,6 +42,9 @@ Options (uninstall):
       --purge        Also remove cache + ~/.config/opencode-agent-skills-md/
       --dry-run      Print the planned change without writing
       --yes          Skip confirmation prompts (reserved)
+
+Options (update):
+      --dry-run      Print the planned cache purge without writing
 
 Options (all):
   -h, --help         Show this help and exit
@@ -104,7 +109,7 @@ export interface MainResult {
  * `process.exitCode`, and returns a structured result so tests can assert
  * without reading the exit code.
  */
-export const runMain = (argv: readonly string[] = process.argv): MainResult => {
+export const runMain = async (argv: readonly string[] = process.argv): Promise<MainResult> => {
   const args = sliceProcessArgv(argv);
 
   // Short-circuit `--help` / `-h` before `parseArgs` so the user can ask
@@ -162,7 +167,11 @@ export const runMain = (argv: readonly string[] = process.argv): MainResult => {
         return { command, exitCode: 0 };
       }
       case "status": {
-        runStatus();
+        await runStatus();
+        return { command, exitCode: 0 };
+      }
+      case "update": {
+        await runUpdate({ dryRun: parsed.values["dry-run"] === true });
         return { command, exitCode: 0 };
       }
       case "doctor": {
@@ -213,5 +222,5 @@ const checkInvokedAsMain = (): boolean => {
 const invokedAsMain = checkInvokedAsMain();
 
 if (invokedAsMain) {
-  runMain(process.argv);
+  void runMain(process.argv);
 }

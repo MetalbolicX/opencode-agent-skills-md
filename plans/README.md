@@ -16,6 +16,8 @@ starting, honor its STOP conditions, and update your row when done.
 | 006 | Preserve commas inside JSONC string values | P1 | S | — | DONE |
 | 007 | Write config before purging plugin-owned directories | P1 | S | — | DONE |
 | 008 | Reuse the shared walker in `listSkillFiles` | P2 | S | — | DONE |
+| 009 | Smart `update` flow for `oas` | P1 | M | — | DONE |
+| 010 | Polish manual publishing for `opencode-agent-skills-md` | P1 | M | 009 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
