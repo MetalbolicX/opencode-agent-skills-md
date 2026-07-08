@@ -17,6 +17,7 @@
 - [Usage](#usage)
 - [How it Works](#how-it-works)
 - [Examples](#examples)
+- [Maintainer release flow](#maintainer-release-flow)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -133,11 +134,18 @@ pnpm install
 pnpm run build    # builds both packages via `pnpm -r run build`
 ```
 
-The OpenCode plugin bundle is emitted at `packages/opencode-agent-skills-md/dist/opencode/index.js`. Symlink it into your local OpenCode plugin directory:
+The OpenCode plugin bundles are emitted at:
+
+```text
+packages/opencode-agent-skills-md/dist/plugin.mjs   # the plugin entrypoint
+packages/opencode-agent-skills-md/dist/cli.mjs      # the `oas` CLI
+```
+
+Symlink the plugin into your local OpenCode plugin directory:
 
 ```bash
 mkdir -p ~/.config/opencode/plugin
-ln -sf "$(pwd)/packages/opencode-agent-skills-md/dist/opencode/index.js" ~/.config/opencode/plugin/skills.ts
+ln -sf "$(pwd)/packages/opencode-agent-skills-md/dist/plugin.mjs" ~/.config/opencode/plugin/skills.ts
 ```
 
 ## Usage
@@ -199,6 +207,21 @@ List matching skills:
 ```text
 get_available_skills({ query: "refactor" })
 ```
+
+## Maintainer release flow
+
+This project is published **manually** by the maintainer from a local checkout. There is no CI release automation. Releases go through the workspace at `packages/opencode-agent-skills-md`; the workspace root is private and must not be published.
+
+1. `corepack use pnpm@11`
+2. `pnpm install --frozen-lockfile`
+3. `pnpm run typecheck`
+4. `pnpm test`
+5. `pnpm -F opencode-agent-skills-md pack`
+6. `cd packages/opencode-agent-skills-md && npm pack --dry-run` (to inspect contents)
+7. `cd packages/opencode-agent-skills-md && npm publish --access public` (publish from the package directory, not the workspace root)
+8. `git tag v1.3.0 && git push origin v1.3.0` (only after publish succeeds)
+
+> Do **not** add a `just publish` recipe. The final `npm publish` step is intentionally outside the task runner so the maintainer reviews the tarball before pushing.
 
 ## Contributing
 
