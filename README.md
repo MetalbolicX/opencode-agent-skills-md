@@ -6,12 +6,11 @@
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/MetalbolicX/opencode-agent-skills-md?style=flat-square" /></a>
 </p>
 
-<p align="center">Reusable Agent Skills engine plus an OpenCode plugin adapter, distributed as two workspace packages.</p>
+<p align="center">OpenCode plugin for agent skills — single-package Bun layout with semantic matching.</p>
 
 ## Table of Contents
 
 - [Description](#description)
-- [Which Package?](#which-package)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -23,33 +22,17 @@
 
 ## Description
 
-This repo publishes two packages:
-
-| Package | Purpose |
-|---------|---------|
-| [`opencode-agent-skills-md`](https://www.npmjs.com/package/opencode-agent-skills-md) | OpenCode plugin — the four skill tools (`use_skill`, `read_skill_file`, `run_skill_script`, `get_available_skills`) and the OpenCode host adapter. |
-| [`opencode-agent-skills-md-core`](packages/core) | Portable, host-agnostic skills engine: discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts. Zero dependency on `@opencode-ai/plugin`. |
-
-The core engine is the reusable engine; the OpenCode plugin is one concrete adapter built on top of it.
-
-## Which Package?
-
-Pick the package that matches your harness:
-
-- **You use OpenCode** → install [`opencode-agent-skills-md`](https://www.npmjs.com/package/opencode-agent-skills-md). It already implements the `SkillHostClient` boundary against the OpenCode SDK and ships the four tools ready to load.
-- **You build a custom harness, CLI, or test fixture** → install [`opencode-agent-skills-md-core`](packages/core). It is a standalone ESM package whose runtime dependencies exclude `@opencode-ai/plugin`. You provide your own `SkillHostClient` implementation and pass it to the tool factories of your choice.
-
-Both packages live in this repo as a pnpm workspace. From the repo root, `pnpm install` wires them together via the workspace link so the OpenCode plugin can resolve `opencode-agent-skills-md-core` by name during development.
+`opencode-agent-skills-md` is an OpenCode plugin that provides reusable agent skills. It discovers skills from project and user locations, loads skill content into the context window, and uses semantic ranking with fuzzy fallback to suggest relevant skills.
 
 ## Features
 
 - **Standardized Skill Discovery**: Finds skills from project and user locations, supporting both OpenCode and Claude skill directory layouts.
 - **Context Injection**: Loads `SKILL.md` content directly into the context window as synthetic, non-reply messages.
-- **Smart Keyword Matching**: Automatically monitors messages and uses lightweight keyword matching to invisibly prompt the agent to use relevant skills.
+- **Semantic Ranking with Fuzzy Fallback**: Uses keyword scoring as the primary signal with bag-of-words embeddings for semantic ranking, falling back to Levenshtein-based fuzzy matching when needed.
 - **Compaction Resilient**: Re-injects the list of loaded skills after session compaction events to ensure they remain available in long-running sessions.
 - **Script Execution**: Recursively finds and executes scripts (files with the executable bit set) within skill directories.
 - **Superpowers Mode**: Optional integration to automatically bootstrap the `using-superpowers` workflow.
-- **Reusable Engine**: The core package is host-agnostic — write a `SkillHostClient` for your harness and reuse the entire skills engine without pulling the OpenCode SDK.
+- **Preference Layer**: Hooks for annotating native tool definitions and system prompts with skill policy information.
 
 ## Installation
 
@@ -104,48 +87,21 @@ If you prefer not to use the CLI, add the plugin entry manually to `~/.config/op
 
 Restart OpenCode after updating the config.
 
-### Custom harness (standalone engine)
-
-Install the core engine and implement `SkillHostClient` against your own host:
-
-```bash
-pnpm add opencode-agent-skills-md-core
-```
-
-```ts
-import {
-  discoverAllSkills,
-  parseSkillFile,
-  resolveSkill,
-  type Skill,
-  type SkillHostClient,
-  type SkillHostSession,
-} from "opencode-agent-skills-md-core";
-```
-
-The core package has zero runtime dependency on `@opencode-ai/plugin`, so it is the right entry point for custom harnesses, CLIs, and test fixtures. Implement the `SkillHostClient` interface declared in `packages/core/src/types.ts` and pass an instance to the tool factories of your choice.
-
 ### Local development
 
 ```bash
 git clone https://github.com/MetalbolicX/opencode-agent-skills-md
 cd opencode-agent-skills-md
-pnpm install
-pnpm run build    # builds both packages via `pnpm -r run build`
+bun install
+bun run typecheck
+bun test
 ```
 
-The OpenCode plugin bundles are emitted at:
-
-```text
-packages/opencode-agent-skills-md/dist/plugin.mjs   # the plugin entrypoint
-packages/opencode-agent-skills-md/dist/cli.mjs      # the `oas` CLI
-```
-
-Symlink the plugin into your local OpenCode plugin directory:
+The plugin entrypoint is `src/plugin.ts`. Symlink it into your local OpenCode plugin directory:
 
 ```bash
-mkdir -p ~/.config/opencode/plugin
-ln -sf "$(pwd)/packages/opencode-agent-skills-md/dist/plugin.mjs" ~/.config/opencode/plugin/skills.ts
+mkdir -p ~/.config/opencode/plugins
+ln -sf "$(pwd)/src/plugin.ts" ~/.config/opencode/plugins/skills.ts
 ```
 
 ## Usage
@@ -182,60 +138,50 @@ opencode
 ## How it Works
 
 1. **Session Initialization**: On the first message, a complete list of discovered skills is injected into the context via `<available-skills>`.
-2. **Invisible Evaluation**: For subsequent messages, user text is tokenized and matched against skill names/descriptions. Matches trigger a hidden `<skill-evaluation-required>` block prompting the agent to invoke `use_skill` if appropriate.
+2. **Semantic Evaluation**: For subsequent messages, user text is semantically ranked against skill names, descriptions, and triggers. The top 5 most relevant skills trigger a hidden `<skill-evaluation-required>` block prompting the agent to invoke `use_skill` if appropriate.
 3. **Synthetic Injection**: Tool outputs are injected using `synthetic: true` and `noReply: true`, meaning they do not count as user messages and remain quietly in the context window.
 4. **Script Safety**: File reads (`read_skill_file`) strictly prevent path traversal outside the skill's root directory. Scripts (`run_skill_script`) skip common heavy directories like `node_modules` and `.git` and only execute files with the executable bit set.
 
 ## Examples
 
 Load a skill into context:
-```text
+```
 use_skill("brainstorming")
 ```
 
 Read a supporting file from a skill:
-```text
+```
 read_skill_file("brainstorming", "references/transformation-rules.md")
 ```
 
 Run a script from a skill directory:
-```text
+```
 run_skill_script("my-skill", "scripts/build.sh", ["--dry-run"])
 ```
 
 List matching skills:
-```text
+```
 get_available_skills({ query: "refactor" })
 ```
 
 ## Maintainer release flow
 
-This project is published **manually** by the maintainer from a local checkout. There is no CI release automation. Releases go through the workspace at `packages/opencode-agent-skills-md`; the workspace root is private and must not be published.
-
-1. `corepack use pnpm@11`
-2. `pnpm install --frozen-lockfile`
-3. `pnpm run typecheck`
-4. `pnpm test`
-5. `pnpm -F opencode-agent-skills-md pack`
-6. `cd packages/opencode-agent-skills-md && npm pack --dry-run` (to inspect contents)
-7. `cd packages/opencode-agent-skills-md && npm publish --access public` (publish from the package directory, not the workspace root)
-8. `git tag v1.3.0 && git push origin v1.3.0` (only after publish succeeds)
-
-> Do **not** add a `just publish` recipe. The final `npm publish` step is intentionally outside the task runner so the maintainer reviews the tarball before pushing.
+1. `corepack use bun@1`
+2. `bun install`
+3. `bun run typecheck`
+4. `bun test`
+5. `npm pack --dry-run` (from the package directory to inspect contents)
+6. `npm publish --access public` (from the package directory, not the workspace root)
+7. `git tag v1.3.0 && git push origin v1.3.0` (only after publish succeeds)
 
 ## Contributing
 
-Contributions are welcome. The codebase uses TypeScript and Rolldown for bundling. Two workspace packages live in this repo:
-
-- `packages/core/` — the portable skills engine.
-- `packages/opencode-agent-skills-md/` — the OpenCode plugin.
-
-Workspace commands at the repo root (`pnpm run build`, `pnpm test`, `pnpm run typecheck`) delegate to both packages via `pnpm -r`.
+Contributions are welcome. The codebase uses TypeScript and Bun.
 
 Please run the following before opening a pull request:
 ```bash
-pnpm run typecheck
-pnpm test
+bun run typecheck
+bun test
 ```
 
 ## License

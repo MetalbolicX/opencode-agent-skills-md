@@ -1,36 +1,35 @@
 {
-  "name": "opencode-agent-skills-md-workspace",
+  "name": "opencode-agent-skills-md",
   "version": "1.4.0",
-  "private": true,
-  "description": "pnpm workspace root for opencode-agent-skills-md. The user-facing OpenCode plugin lives at packages/opencode-agent-skills-md and the portable engine at packages/core. This manifest exists only to wire the workspace — it has no exports of its own; consumers install one of the workspace packages directly.",
-  "author": "Josh Thomas <josh@joshthomas.dev>",
+  "description": "OpenCode plugin for agent skills — single-package Bun layout.",
+  "type": "module",
+  "main": "src/plugin.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "install-local": "mkdir -p .opencode/plugins && echo 'export { SkillsPlugin } from \"./src/plugin.ts\";' > .opencode/plugins/skills.js",
+    "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@opencode-ai/plugin": "^1.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "bun-types": "^1.0.0",
+    "typescript": "^5.3.0"
+  },
+  "overrides": {
+    "onnxruntime-node": "1.20.1"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/MetalbolicX/opencode-agent-skills-md.git"
-  },
-  "keywords": [
-    "opencode",
-    "plugin",
-    "skills",
-    "agent",
-    "ai"
-  ],
-  "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 run build",
-    "test": "pnpm -r --no-bail --workspace-concurrency=1 test && node --import tsx --test tests/workspace.test.ts",
-    "test:workspace": "node --import tsx --test tests/workspace.test.ts",
-    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "packageManager": "pnpm@11.10.0",
-  "devDependencies": {
-    "@types/node": "^26.1.0",
-    "opencode-agent-skills-md": "workspace:*",
-    "opencode-agent-skills-md-core": "workspace:*",
-    "tsx": "^4.23.0",
-    "typescript": "^6.0.3"
   }
 }

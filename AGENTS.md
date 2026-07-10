@@ -1,13 +1,12 @@
 # Agent Guidelines
 
 ## Commands
-- **Package manager:** pnpm.
-- **Install:** `pnpm install`
-- **Test:** `pnpm test` (runs `pnpm -r --no-bail test` for both packages, then the workspace contract test if all packages pass)
-- **Workspace contract test only:** `pnpm run test:workspace` (runs `node --import tsx --test tests/workspace.test.ts`)
-- **Single test file:** `pnpm -F opencode-agent-skills-md-core exec node --import tsx --test tests/<file>.test.ts` (or any file inside a package's `tests/`)
-- **Typecheck:** `pnpm run typecheck` (delegates to `pnpm -r run typecheck`)
-- **Build:** `pnpm run build` (delegates to `pnpm -r --workspace-concurrency=1 run build`)
+- **Runtime:** Bun (`bun`).
+- **Install:** `bun install`
+- **Test:** `bun test` (runs all `src/*.test.ts` files in the root `src/` directory)
+- **Single test file:** `bun test src/<file>.test.ts`
+- **Typecheck:** `bun run typecheck` (runs `tsc --noEmit`)
+- **Local plugin install:** `bun run install-local` (symlinks `src/plugin.ts` into `.opencode/plugins/`)
 
 ## Code Style
 - TypeScript is strict (`noUncheckedIndexedAccess` is on); check indexed access before using it.
@@ -18,11 +17,11 @@
 - Validate user-supplied paths before reading files outside a skill root.
 
 ## Repo Structure
-This is a pnpm workspace with two packages:
-- `packages/core/src/` — the portable, host-agnostic skills engine (`opencode-agent-skills-md-core`). Discovery, parsing, search, and the `SkillHostClient` / `SkillHostSession` boundary contracts.
-- `packages/opencode-agent-skills-md/src/` — the OpenCode plugin adapter (`opencode-agent-skills-md`). The four skill tools, the OpenCode host implementation, and the plugin factory.
-- Per-package tests live inside `packages/<pkg>/tests/`.
-- The repo root is a private workspace manifest (`package.json`) with no source of its own; legacy `src/`, root `tests/`, root `rolldown.config.js`, and root `tsconfig.build.json` were removed in favor of the per-package locations.
+Single-package Bun layout under `src/`:
+- `src/` — the plugin source: `plugin.ts`, `skills.ts`, `host.ts`, `tools.ts`, `search.ts`, `match.ts`, `embeddings.ts`, `preference.ts`, `preference-hooks.ts`, `parse.ts`, `utils.ts`, `types.ts`, and their corresponding test files.
+- `src/index.ts` — root entrypoint, re-exports the public plugin API.
+- Per-file test files: `src/*.test.ts`.
+- `.opencode/plugins/` — development plugin symlink target.
 
 ## Skill Behavior
 - Discovery order is `.opencode/skills/`, `.claude/skills/`, `~/.config/opencode/skills/`, then `~/.claude/skills/`.
@@ -39,5 +38,5 @@ This is a pnpm workspace with two packages:
 - `.github/copilot-instructions.md` mirrors the bd workflow and is the repo-local source of truth.
 
 ## Verification
-- Prefer `pnpm run typecheck` before `pnpm test` when you need a quick smoke check.
-- Keep docs aligned with the actual repo workflow; Bun references are stale and should not be reintroduced.
+- Run `bun run typecheck` before `bun test` when you need a quick smoke check.
+- The full test suite: `bun test` (84 pass, 12 skip in normal conditions).

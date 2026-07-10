@@ -1,47 +1,34 @@
 set dotenv-load := true
-set unstable := true
 
 [private]
 default:
     @just --list --list-submodules
 
-[private]
-fmt:
-    @just --fmt
+# Run the full test suite
+test:
+    bun test
 
-# Build both workspace packages (core engine + OpenCode plugin)
-build:
-    pnpm run build
+# Typecheck
+typecheck:
+    tsc --noEmit
 
-# Install dev plugin locally (project-scoped stub that re-exports the built bundle)
-install: build
+# Install local plugin for development
+install-local:
     mkdir -p .opencode/plugins
-    printf 'export { SkillsPlugin as default, SkillsPlugin } from "../../packages/opencode-agent-skills-md/dist/plugin.mjs";\n' > .opencode/plugins/skills.js
-
-# Uninstall local plugin copy
-uninstall:
-    rm -f .opencode/plugins/skills.js
+    echo 'export { SkillsPlugin } from "./src/plugin.ts";' > .opencode/plugins/skills.js
 
 # Check if local plugin is installed
 status:
     @ls -la .opencode/plugins/skills.js 2>/dev/null || echo "Not installed"
 
-# Run the full test suite (both packages + workspace contract test)
-test:
-    pnpm test
+# Uninstall local plugin copy
+uninstall-local:
+    rm -f .opencode/plugins/skills.js
 
-# Run the workspace contract test in isolation
-test-workspace:
-    pnpm run test:workspace
+# Run a single test file
+test-file file:
+    bun test {{file}}
 
-# Typecheck both workspace packages
-typecheck:
-    pnpm run typecheck
-
-# Verify the manual publish flow end-to-end without publishing: install, typecheck, test, pack, and dry-run the package contents.
-release-check:
-    pnpm install --frozen-lockfile
-    pnpm run typecheck
-    pnpm test
-    pnpm -F opencode-agent-skills-md pack
-    cd packages/opencode-agent-skills-md && npm pack --dry-run
+# Run typecheck only
+check:
+    tsc --noEmit

@@ -1,4 +1,5 @@
 {
+  "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -9,7 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["bun-types"],
+    "lib": ["ESNext"]
   },
   "include": ["src"]
 }
