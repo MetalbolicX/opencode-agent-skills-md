@@ -3,22 +3,33 @@
   "version": "1.4.0",
   "description": "OpenCode plugin for agent skills — single-package Bun layout.",
   "type": "module",
-  "main": "src/plugin.ts",
-  "types": "src/plugin.ts",
+  "main": "dist/src/plugin.js",
+  "types": "dist/src/plugin.d.ts",
   "exports": {
-    ".": "./src/plugin.ts"
+    ".": {
+      "types": "./dist/src/plugin.d.ts",
+      "import": "./dist/src/plugin.js"
+    }
   },
+  "oc-plugin": ["server"],
   "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.spec.*",
     "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.spec.ts",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf dist",
     "install-local": "mkdir -p .opencode/plugins && echo 'export { SkillsPlugin } from \"./src/plugin.ts\";' > .opencode/plugins/skills.js",
     "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed",
-    "prepublishOnly": "bun run typecheck && bun test"
+    "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.0.0",

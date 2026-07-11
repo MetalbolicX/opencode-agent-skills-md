@@ -25,6 +25,7 @@ starting, honor its STOP conditions, and update your row when done.
 | 015 | Rewrite the stale README | P1 | S | — | DONE |
 | 016 | Restore the skipped Bun tests | P2 | M | — | DONE |
 | 017 | Add embeddings parity tests | P2 | M | — | DONE |
+| 018 | Switch publish output to compiled JS + .d.ts | P1 | S | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

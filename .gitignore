@@ -153,3 +153,6 @@ dist
 
 # CodeGraph index
 .codegraph/
+
+# Build outputs
+dist/
