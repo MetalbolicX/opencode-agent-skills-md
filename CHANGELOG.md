@@ -18,6 +18,32 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+## [1.4.0]
+
+### Changed
+
+- **Single-package Bun layout**: collapsed the pnpm workspace into a single Bun package. The `packages/core` and `packages/opencode-agent-skills-md` directories are gone — all source lives at the repo root under `src/`. The package now requires Bun >= 1.0.0 and uses `bun test` / `bun run typecheck` instead of pnpm scripts.
+- **Rewrote README**: removed stale CLI commands (`oas status`, `oas update`), pinned the install version to 1.4.0, documented all 6 discovery roots, and corrected the install paths.
+- **Embeddings module**: added a `matchSkills` parity shim that delegates to `createMatcher().match()`, restoring upstream API compatibility.
+
+### Fixed
+
+- **Embeddings extraction**: fixed `.tolot()` → `.tolist()` typo in `src/embeddings.ts` that caused the real transformer embeddings to silently fall through to bag-of-words, degrading semantic matching quality.
+- **Chat session lifecycle**: tightened the `isChatTextPart` type guard, reset `setupComplete` on compaction, and added a module-scoped discovery cache with a 5s TTL.
+- **Symlink hardening**: `isPathSafe` now resolves symlinks before checking path boundaries, preventing directory traversal via symlinked skill directories.
+- **XML and shell escaping**: added `escapeXml` and `escapeShellArg` helpers for skill content injection and script execution.
+- **YAML and JSONC parsing**: preserves commas inside JSONC string values during config file manipulation.
+
+### Removed
+
+- Pruned dead code: deleted `src/superpowers.ts` stub (6-line no-op never imported by anything) and annotated `matchSkillsByKeyword` as `@internal`.
+- Removed a stale `.tgz` artifact from the repository.
+
+### Added
+
+- **Embeddings parity tests**: 11 new unit tests covering `cosineSimilarity`, `applyHfEndpoint`, and the `matchSkills` parity shim. Suite grew from 110 to 121 pass.
+- **Publish-ready `package.json`**: added `publishConfig.access`, `files`, `types`, `exports`, and `prepublishOnly` hook so publishing from a fresh checkout is safe and reproducible.
+
 ## [1.3.0]
 
 ### Changed
@@ -164,7 +190,8 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Josh Thomas <josh@joshthomas.dev> (maintainer)
 
-[unreleased]: https://github.com/MetalbolicX/opencode-agent-skills-md/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/MetalbolicX/opencode-agent-skills-md/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v1.4.0
 [1.3.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v1.3.0
 [0.1.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.1.0
 [0.2.0]: https://github.com/MetalbolicX/opencode-agent-skills-md/releases/tag/v0.2.0
