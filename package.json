@@ -4,11 +4,21 @@
   "description": "OpenCode plugin for agent skills — single-package Bun layout.",
   "type": "module",
   "main": "src/plugin.ts",
+  "types": "src/plugin.ts",
+  "exports": {
+    ".": "./src/plugin.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "install-local": "mkdir -p .opencode/plugins && echo 'export { SkillsPlugin } from \"./src/plugin.ts\";' > .opencode/plugins/skills.js",
-    "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed"
+    "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed",
+    "prepublishOnly": "bun run typecheck && bun test"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
@@ -26,6 +36,9 @@
   },
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "repository": {

@@ -21,6 +21,10 @@ starting, honor its STOP conditions, and update your row when done.
 | 011 | Fix broken embeddings extraction (`tolot`→`tolist`) | P1 | S | — | DONE |
 | 012 | Harden chat session lifecycle | P1 | M | — | DONE |
 | 013 | Prune dead code (superpowers stub + keyword fn) | P2 | S | — | DONE |
+| 014 | Make `package.json` publish-ready | P1 | S | — | DONE |
+| 015 | Rewrite the stale README | P1 | S | — | TODO |
+| 016 | Restore the skipped Bun tests | P2 | M | — | TODO |
+| 017 | Add embeddings parity tests | P2 | M | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -35,6 +39,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 011 should run first because it unblocks the semantic embeddings feature.
 - 012 and 013 are independent of 011 and of each other.
 - All earlier plans are otherwise independent and can execute in any order.
+- 014 and 015 are independent documentation/package cleanup items.
+- 016 is independent of 014/015 and should be tackled before 017 if we want
+  the test suite to reach full coverage again.
+- 017 is independent of 014/015 and can run in parallel with 016 if desired.
 
 ## Findings considered and rejected
 
