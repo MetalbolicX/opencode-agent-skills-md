@@ -327,6 +327,16 @@ const rankSkills = async (
 };
 
 /**
+ * Parity shim for upstream opencode-agent-skills: a direct matchSkills
+ * entrypoint that delegates to createMatcher().match(). Preserves the
+ * same return semantics — semantic-ranked SkillSummary list.
+ */
+export const matchSkills = async (
+  query: string,
+  skills: SkillSummary[],
+): Promise<SkillSummary[]> => createMatcher().match(query, skills);
+
+/**
  * Main entry point: create a Matcher instance.
  * Model loads lazily on first match() call.
  */

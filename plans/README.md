@@ -24,7 +24,7 @@ starting, honor its STOP conditions, and update your row when done.
 | 014 | Make `package.json` publish-ready | P1 | S | — | DONE |
 | 015 | Rewrite the stale README | P1 | S | — | DONE |
 | 016 | Restore the skipped Bun tests | P2 | M | — | DONE |
-| 017 | Add embeddings parity tests | P2 | M | — | TODO |
+| 017 | Add embeddings parity tests | P2 | M | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -43,6 +43,9 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 016 is independent of 014/015 and should be tackled before 017 if we want
   the test suite to reach full coverage again.
 - 017 is independent of 014/015 and can run in parallel with 016 if desired.
+- 017 added 11 unit tests (7 cosineSimilarity + 2 applyHfEndpoint + 2 matchSkills
+  parity shim) and introduced the `matchSkills` parity shim in `src/embeddings.ts`.
+  Suite grew from 110 → 121 pass.
 
 ## Findings considered and rejected
 

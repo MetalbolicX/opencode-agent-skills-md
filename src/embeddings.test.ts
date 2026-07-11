@@ -8,7 +8,7 @@
  * The Matcher interface wraps search.ts behaviour with lazy model loading.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test, beforeEach, afterEach } from "node:test";
 import type { SkillSummary } from "./types";
 
 function makeSkillSummary(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
@@ -229,6 +229,142 @@ describe("Embeddings extraction", () => {
         typeof val === "number" && !isNaN(val),
         `expected number, got ${typeof val}`,
       );
+    }
+  });
+});
+
+describe("cosineSimilarity", () => {
+  test("identical non-zero vectors return 1", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 2, 3], [1, 2, 3]);
+    assert.ok(Math.abs(result - 1) < 1e-9, `expected 1, got ${result}`);
+  });
+
+  test("[1, 1] vs [1, 1] returns 1 (sanity check)", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 1], [1, 1]);
+    assert.ok(Math.abs(result - 1) < 1e-9, `expected 1, got ${result}`);
+  });
+
+  test("[1, 2] vs [2, 4] returns 1 (collinear positive vectors)", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 2], [2, 4]);
+    assert.ok(Math.abs(result - 1) < 1e-9, `expected 1, got ${result}`);
+  });
+
+  test("orthogonal vectors return 0 ([1, 0] vs [0, 1])", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 0], [0, 1]);
+    assert.equal(result, 0);
+  });
+
+  test("opposite vectors return -1 ([1, 0] vs [-1, 0])", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 0], [-1, 0]);
+    assert.ok(Math.abs(result - -1) < 1e-9, `expected -1, got ${result}`);
+  });
+
+  test("zero-magnitude vector returns 0", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([0, 0, 0], [1, 2, 3]);
+    assert.equal(result, 0);
+  });
+
+  test("different-length vectors return 0", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    const result = cosineSimilarity([1, 2, 3], [1, 2]);
+    assert.equal(result, 0);
+  });
+});
+
+describe("applyHfEndpoint", () => {
+  // Save and restore env state so tests do not leak HF_ENDPOINT or remoteHost
+  // into the surrounding test environment.
+  let originalEndpoint: string | undefined;
+  let originalRemoteHost: string | undefined;
+
+  beforeEach(async () => {
+    const { env } = await import("@huggingface/transformers");
+    originalEndpoint = process.env.HF_ENDPOINT;
+    originalRemoteHost = env.remoteHost;
+  });
+
+  afterEach(async () => {
+    const { env } = await import("@huggingface/transformers");
+    if (originalEndpoint === undefined) {
+      delete process.env.HF_ENDPOINT;
+    } else {
+      process.env.HF_ENDPOINT = originalEndpoint;
+    }
+    // env.remoteHost is typed as string in @huggingface/transformers, but the
+    // original value may legitimately have been undefined; cast narrowly so we
+    // can restore either case without suppressing unrelated type errors.
+    (env as { remoteHost: string | undefined }).remoteHost = originalRemoteHost;
+  });
+
+  test("when HF_ENDPOINT is set, applyHfEndpoint sets env.remoteHost to that value", async () => {
+    const { applyHfEndpoint } = await import("./embeddings");
+    const { env } = await import("@huggingface/transformers");
+
+    process.env.HF_ENDPOINT = "https://custom-endpoint.example.com";
+    applyHfEndpoint();
+
+    assert.equal(env.remoteHost, "https://custom-endpoint.example.com");
+  });
+
+  test("when HF_ENDPOINT is unset, applyHfEndpoint does not mutate env.remoteHost", async () => {
+    const { applyHfEndpoint } = await import("./embeddings");
+    const { env } = await import("@huggingface/transformers");
+
+    delete process.env.HF_ENDPOINT;
+    // Use a sentinel that is clearly different from any real HF endpoint
+    // so the test can detect any accidental mutation.
+    const sentinel = "https://untouched-sentinel.example.com";
+    (env as { remoteHost: string | undefined }).remoteHost = sentinel;
+
+    applyHfEndpoint();
+
+    assert.equal(env.remoteHost, sentinel);
+  });
+});
+
+describe("matchSkills — parity shim", () => {
+  test("matchSkills returns the same set of skill names as createMatcher().match()", async () => {
+    const { matchSkills, createMatcher } = await import("./embeddings");
+    const skills = [
+      makeSkillSummary({ name: "brainstorming", description: "creative thinking" }),
+      makeSkillSummary({ name: "git-helper", description: "git workflow assistance" }),
+      makeSkillSummary({ name: "refactor", description: "code refactoring helper" }),
+      makeSkillSummary({ name: "deploy", description: "deployment automation" }),
+    ];
+
+    const shimResult = await matchSkills("brain", skills);
+    const matcherResult = await createMatcher().match("brain", skills);
+
+    const shimNames = new Set(shimResult.map((s) => s.name));
+    const matcherNames = new Set(matcherResult.map((s) => s.name));
+
+    // Order may differ if the fuzzy fallback engages, so compare as sets.
+    assert.deepEqual(
+      shimNames,
+      matcherNames,
+      `matchSkills must return the same name set as createMatcher().match() (shim=${JSON.stringify([...shimNames])}, matcher=${JSON.stringify([...matcherNames])})`,
+    );
+  });
+
+  test("matchSkills returns an array of SkillSummary", async () => {
+    const { matchSkills } = await import("./embeddings");
+    const skills = [
+      makeSkillSummary({ name: "alpha", description: "first" }),
+      makeSkillSummary({ name: "beta", description: "second" }),
+    ];
+
+    const result = await matchSkills("alpha", skills);
+
+    assert.ok(Array.isArray(result), "matchSkills must return an array");
+    for (const summary of result) {
+      assert.equal(typeof summary.name, "string", "each result must have a string name");
+      assert.equal(typeof summary.description, "string", "each result must have a string description");
     }
   });
 });
