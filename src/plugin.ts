@@ -22,14 +22,7 @@ import { createMatcher, type Matcher } from "./embeddings";
 
 export { debugLog } from "./utils";
 
-/**
- * Lightweight keyword matching to replace ML embeddings.
- *
- * Per-token contribution:
- *   - name hit    = 2x
- *   - trigger hit = 1.5x
- *   - desc hit    = 1x
- */
+/** @internal */
 export const matchSkillsByKeyword = (userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] => {
   const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
   if (tokens.length === 0) return [];
@@ -211,6 +204,19 @@ ${skillsNamespace}
   await host.client.injectContent(sessionID, content, ctx);
 };
 
+// Module-scoped discovery cache with 5-second TTL to avoid duplicate filesystem/parsing work
+const DISCOVERY_CACHE_TTL_MS = 5000;
+let _discoveryCache: { result: Map<string, Skill>; timestamp: number } | null = null;
+
+const getCachedSkills = async (directory: string): Promise<Map<string, Skill>> => {
+  const now = Date.now();
+  if (_discoveryCache && now - _discoveryCache.timestamp < DISCOVERY_CACHE_TTL_MS) {
+    return _discoveryCache.result;
+  }
+  _discoveryCache = { result: await discoverAllSkills(directory), timestamp: now };
+  return _discoveryCache.result;
+};
+
 // Type for the chat.message output shape we handle
 interface ChatMessageOutput {
   message?: {
@@ -348,6 +354,11 @@ export const SkillsPlugin: PluginFactory = async ({
   );
 
   return {
+    // Exposed for unit testing — do not use in production code
+    _sessionStates: sessionStates,
+    _isFirstMessageSetup: isFirstMessageSetup,
+    _touchSessionState: (sid: string) => touchSessionState(sessionStates, sid, Date.now()),
+
     "chat.message": async (input: unknown, output: unknown) => {
       const rawOutput = output as ChatMessageOutput | null;
       if (!rawOutput || typeof rawOutput !== "object") {
@@ -360,7 +371,7 @@ export const SkillsPlugin: PluginFactory = async ({
       }
       const sessionID = rawOutput.message.sessionID;
 
-      const skillsByName = await discoverAllSkills(directory);
+      const skillsByName = await getCachedSkills(directory);
       const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(skill => ({
         name: skill.name,
         description: skill.description,
@@ -406,6 +417,8 @@ export const SkillsPlugin: PluginFactory = async ({
         record.loadedSkills.clear();
         record.pendingSkills.clear();
         record.injectedSummaries.clear();
+        record.setupComplete = false;
+        _discoveryCache = null;
         return;
       }
 
@@ -442,7 +455,7 @@ export const SkillsPlugin: PluginFactory = async ({
         );
         return;
       }
-      const skillsByName = await discoverAllSkills(directory);
+      const skillsByName = await getCachedSkills(directory);
       const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(
         (skill) => ({
           name: skill.name,
@@ -455,8 +468,8 @@ export const SkillsPlugin: PluginFactory = async ({
   };
 };
 
-// Type guard for chat text part
-function isChatTextPart(part: unknown): part is { type?: string; text?: string; synthetic?: boolean } {
+// Type guard for chat text part — exported for unit testing
+export function isChatTextPart(part: unknown): part is { type?: string; text?: string; synthetic?: boolean } {
   if (typeof part !== "object" || part === null) return false;
-  return true;
+  return (part as { type?: string }).type === "text";
 }

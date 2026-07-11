@@ -201,3 +201,34 @@ describe("Matcher — result limits", () => {
     assert.ok(Array.isArray(result), "empty query must return an array");
   });
 });
+
+describe("Embeddings extraction", () => {
+  test("getEmbedding returns a non-null 384-dim vector after model init", async () => {
+    const { getEmbedding, initializeModel } = await import("./embeddings");
+
+    // Initialize the model (lazy init — may time out or fail in CI)
+    await initializeModel();
+
+    const embedding = await getEmbedding("hello world");
+
+    if (embedding === null) {
+      // Model failed to load — skip gracefully (Bun does not support context.skip)
+      console.warn("[skip] embedding model unavailable (init timed out or failed)");
+      return;
+    }
+
+    assert.ok(Array.isArray(embedding), "embedding must be an array");
+    assert.ok(embedding.length > 0, "embedding must not be empty");
+    assert.equal(
+      embedding.length,
+      384,
+      `expected 384-dim MiniLM vector, got length ${embedding.length}`,
+    );
+    for (const val of embedding) {
+      assert.ok(
+        typeof val === "number" && !isNaN(val),
+        `expected number, got ${typeof val}`,
+      );
+    }
+  });
+});

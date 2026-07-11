@@ -168,10 +168,9 @@ export const getEmbedding = async (text: string): Promise<number[] | null> => {
       normalize: true,
     });
 
-    // Convert Tensor to number[] — tolot() returns Float32Array
-    // We need to extract the data and convert to a plain number array
+    // Convert Tensor to number[][] — tolist() returns the tensor data as nested arrays
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (tensorResult as any).tolot ? (tensorResult as any).tolot() : tensorResult;
+    const result = (tensorResult as any).tolist ? (tensorResult as any).tolist() : tensorResult;
 
     // Result is typically [1, hidden_size] or [hidden_size]
     let embedding: number[];

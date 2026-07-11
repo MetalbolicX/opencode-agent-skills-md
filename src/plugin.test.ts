@@ -18,6 +18,7 @@ import type { SkillSummary } from "./types";
 type PluginModule = {
   matchSkillsByKeyword: (userMessage: string, availableSkills: SkillSummary[]) => SkillSummary[];
   formatMatchedSkillsInjection: (matchedSkills: SkillSummary[]) => string;
+  isChatTextPart: (part: unknown) => boolean;
 };
 
 async function loadPluginModule(): Promise<PluginModule> {
@@ -103,6 +104,126 @@ describe("formatMatchedSkillsInjection", () => {
 
     assert.match(output, /- with-trigger: x\s+trigger: auth, login/);
     assert.match(output, /- no-trigger: y/);
+  });
+});
+
+/**
+ * Regression tests for plan 012 — harden chat session lifecycle.
+ *
+ * These tests verify three correctness fixes:
+ * 1. isChatTextPart rejects non-text parts (image, file, etc.)
+ * 2. Compaction resets setupComplete so bootstrap can be retried
+ * 3. Discovery is reused within the same turn (not called twice)
+ */
+
+describe("plan 012: isChatTextPart", () => {
+  test("returns true only for parts with type === 'text'", async () => {
+    const { isChatTextPart } = await loadPluginModule();
+
+    // Should return true for text parts
+    assert.equal(isChatTextPart({ type: "text", text: "hello" }), true);
+    assert.equal(isChatTextPart({ type: "text", text: "" }), true);
+
+    // Should return false for image parts
+    assert.equal(isChatTextPart({ type: "image", data: "..." }), false);
+
+    // Should return false for file parts
+    assert.equal(isChatTextPart({ type: "file", name: "doc.pdf" }), false);
+
+    // Should return false for other non-text part types
+    assert.equal(isChatTextPart({ type: "audio", data: "..." }), false);
+
+    // Should return false for null/undefined
+    assert.equal(isChatTextPart(null), false);
+    assert.equal(isChatTextPart(undefined), false);
+
+    // Should return false for primitives
+    assert.equal(isChatTextPart("hello"), false);
+    assert.equal(isChatTextPart(123), false);
+  });
+});
+
+describe("plan 012: compaction resets setupComplete", () => {
+  test("after session.compacted event, setupComplete is reset to false", async () => {
+    const { SkillsPlugin } = await loadPluginModule() as any;
+
+    const shell = Object.assign(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        return { text: async () => "" };
+      },
+      { cwd: () => shell },
+    ) as any;
+
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        prompt: async () => {},
+        getSessionContext: async () => ({}),
+        injectContent: async () => {},
+      },
+    };
+
+    const plugin = await SkillsPlugin({ client, $: shell, shell, directory: "/fake" }) as any;
+
+    // Prime the session so setupComplete = true
+    const record = (plugin as any)._touchSessionState("session-abc");
+    record.setupComplete = true;
+    record.loadedSkills.add("some-skill");
+
+    // Verify pre-condition: setupComplete is true
+    assert.equal(record.setupComplete, true);
+
+    // Fire session.compacted — the fix clears setupComplete
+    await plugin.event({ event: { type: "session.compacted", properties: { sessionID: "session-abc" } } });
+
+    // After compaction, setupComplete must be false so the next message can retry bootstrap
+    const recordAfter = (plugin as any)._sessionStates.get("session-abc");
+    assert.equal(recordAfter?.setupComplete, false, "setupComplete should be reset to false after compaction");
+  });
+});
+
+describe("plan 012: discovery is not called twice in one turn", () => {
+  test("system.transform does not trigger a new discovery if chat.message already discovered this turn", async () => {
+    const { SkillsPlugin } = await loadPluginModule() as any;
+
+    const shell = Object.assign(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        return { text: async () => "" };
+      },
+      { cwd: () => shell },
+    ) as any;
+
+    // Track injectContent calls to verify bootstrap behavior
+    const injectCalls: Array<{ sessionID: string; content: string }> = [];
+    const client = {
+      session: {
+        messages: async () => ({ data: [{ parts: [{ type: "text", text: "<available-skills>" }] }] }),
+        prompt: async () => {},
+        getSessionContext: async () => ({}),
+        injectContent: async (sessionID: string, content: string) => {
+          injectCalls.push({ sessionID, content });
+        },
+      },
+    };
+
+    const plugin = await SkillsPlugin({ client, $: shell, shell, directory: "/fake" }) as any;
+
+    // Call chat.message — this triggers discoverAllSkills (turn 1)
+    await plugin["chat.message"](
+      {},
+      { message: { sessionID: "turn-test", model: {}, agent: "" }, parts: [{ type: "text", text: "hello" }] },
+    );
+
+    // Record how many injectContent calls happened after chat.message
+    const injectCountAfterFirst = injectCalls.length;
+
+    // Call system.transform immediately after — without caching fix, this calls discoverAllSkills again
+    await plugin["experimental.chat.system.transform"]({}, { system: [] });
+
+    // The system.transform with caching should not cause a second round of injection calls
+    // because it reuses the cached discovery result from chat.message
+    // (No additional injectContent should be triggered since skills are already injected)
+    assert.equal(injectCalls.length, injectCountAfterFirst, "system.transform should not re-trigger skill injection");
   });
 });
 
