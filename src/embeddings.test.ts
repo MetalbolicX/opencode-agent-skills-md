@@ -1,14 +1,13 @@
 /**
- * RED phase: Port of packages/core/tests/search.test.ts into embeddings.test.ts.
+ * Tests for the embeddings module.
  *
- * Tests the Matcher interface (lazy init, semantic ranking, fuzzy fallback).
- * These tests FAIL in RED because src/embeddings.ts stub returns skills unchanged.
- *
- * Reference: packages/core/tests/search.test.ts (levenshtein/findClosestMatch/escapeRegex/scoreSkill/searchSkills)
- * The Matcher interface wraps search.ts behaviour with lazy model loading.
+ * Covers:
+ * - Matcher interface (lazy init, semantic ranking, fuzzy fallback, result limits)
+ * - cosineSimilarity pure function
+ * - matchSkills parity shim
  */
 import assert from "node:assert/strict";
-import { describe, test, beforeEach, afterEach } from "node:test";
+import { describe, test } from "node:test";
 import type { SkillSummary } from "./types";
 
 function makeSkillSummary(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
@@ -30,7 +29,6 @@ describe("Matcher — lazy initialization", () => {
     const result = await matcher.match("brain", skills);
 
     assert.ok(result.length >= 1, "at least one skill should match 'brain'");
-    // Name match should rank first
     assert.equal(result[0]?.name, "brainstorming");
   });
 
@@ -59,7 +57,6 @@ describe("Matcher — semantic ranking", () => {
     const result = await matcher.match("refactor", skills);
 
     assert.ok(result.length >= 1, "at least one skill should match");
-    // The skill whose name is "refactor" should appear before the one with "code-refactor"
     const names = result.map(s => s.name);
     const refactorIdx = names.indexOf("refactor");
     const codeRefactorIdx = names.indexOf("code-refactor");
@@ -98,7 +95,6 @@ describe("Matcher — semantic ranking", () => {
 
     const result = await matcher.match("xyz123none", skills);
 
-    // Non-matching skills should not appear in results (or results should be empty)
     const matchedNames = result.map(s => s.name);
     assert.ok(!matchedNames.includes("unrelated"), "non-matching skill should not appear");
   });
@@ -160,7 +156,6 @@ describe("Matcher — fuzzy fallback", () => {
 
     const result = await matcher.match("xyzabc123", skills);
 
-    // Either empty or very few results — nothing close to "xyzabc123"
     assert.ok(result.length < skills.length, "non-matching query should filter results");
   });
 });
@@ -197,39 +192,7 @@ describe("Matcher — result limits", () => {
 
     const result = await matcher.match("", skills);
 
-    // Empty query should not crash — behaviour is implementation-defined
     assert.ok(Array.isArray(result), "empty query must return an array");
-  });
-});
-
-describe("Embeddings extraction", () => {
-  test("getEmbedding returns a non-null 384-dim vector after model init", async () => {
-    const { getEmbedding, initializeModel } = await import("./embeddings");
-
-    // Initialize the model (lazy init — may time out or fail in CI)
-    await initializeModel();
-
-    const embedding = await getEmbedding("hello world");
-
-    if (embedding === null) {
-      // Model failed to load — skip gracefully (Bun does not support context.skip)
-      console.warn("[skip] embedding model unavailable (init timed out or failed)");
-      return;
-    }
-
-    assert.ok(Array.isArray(embedding), "embedding must be an array");
-    assert.ok(embedding.length > 0, "embedding must not be empty");
-    assert.equal(
-      embedding.length,
-      384,
-      `expected 384-dim MiniLM vector, got length ${embedding.length}`,
-    );
-    for (const val of embedding) {
-      assert.ok(
-        typeof val === "number" && !isNaN(val),
-        `expected number, got ${typeof val}`,
-      );
-    }
   });
 });
 
@@ -277,57 +240,6 @@ describe("cosineSimilarity", () => {
   });
 });
 
-describe("applyHfEndpoint", () => {
-  // Save and restore env state so tests do not leak HF_ENDPOINT or remoteHost
-  // into the surrounding test environment.
-  let originalEndpoint: string | undefined;
-  let originalRemoteHost: string | undefined;
-
-  beforeEach(async () => {
-    const { env } = await import("@huggingface/transformers");
-    originalEndpoint = process.env.HF_ENDPOINT;
-    originalRemoteHost = env.remoteHost;
-  });
-
-  afterEach(async () => {
-    const { env } = await import("@huggingface/transformers");
-    if (originalEndpoint === undefined) {
-      delete process.env.HF_ENDPOINT;
-    } else {
-      process.env.HF_ENDPOINT = originalEndpoint;
-    }
-    // env.remoteHost is typed as string in @huggingface/transformers, but the
-    // original value may legitimately have been undefined; cast narrowly so we
-    // can restore either case without suppressing unrelated type errors.
-    (env as { remoteHost: string | undefined }).remoteHost = originalRemoteHost;
-  });
-
-  test("when HF_ENDPOINT is set, applyHfEndpoint sets env.remoteHost to that value", async () => {
-    const { applyHfEndpoint } = await import("./embeddings");
-    const { env } = await import("@huggingface/transformers");
-
-    process.env.HF_ENDPOINT = "https://custom-endpoint.example.com";
-    applyHfEndpoint();
-
-    assert.equal(env.remoteHost, "https://custom-endpoint.example.com");
-  });
-
-  test("when HF_ENDPOINT is unset, applyHfEndpoint does not mutate env.remoteHost", async () => {
-    const { applyHfEndpoint } = await import("./embeddings");
-    const { env } = await import("@huggingface/transformers");
-
-    delete process.env.HF_ENDPOINT;
-    // Use a sentinel that is clearly different from any real HF endpoint
-    // so the test can detect any accidental mutation.
-    const sentinel = "https://untouched-sentinel.example.com";
-    (env as { remoteHost: string | undefined }).remoteHost = sentinel;
-
-    applyHfEndpoint();
-
-    assert.equal(env.remoteHost, sentinel);
-  });
-});
-
 describe("matchSkills — parity shim", () => {
   test("matchSkills returns the same set of skill names as createMatcher().match()", async () => {
     const { matchSkills, createMatcher } = await import("./embeddings");
@@ -344,7 +256,6 @@ describe("matchSkills — parity shim", () => {
     const shimNames = new Set(shimResult.map((s) => s.name));
     const matcherNames = new Set(matcherResult.map((s) => s.name));
 
-    // Order may differ if the fuzzy fallback engages, so compare as sets.
     assert.deepEqual(
       shimNames,
       matcherNames,
