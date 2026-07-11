@@ -59,12 +59,13 @@ export const createSkillTools = (
   host: OpencodeSkillHost,
   $: ((strings: TemplateStringsArray, ...values: unknown[]) => { text: () => Promise<string> }) & { cwd: (d: string) => ReturnType<typeof $> },
   directory: string,
-  onSkillLoaded?: OnSkillLoaded
+  onSkillLoaded?: OnSkillLoaded,
+  scriptTimeoutMs: number = SKILL_SCRIPT_TIMEOUT_MS,
 ): SkillTools => {
   return {
     GetAvailableSkills: GetAvailableSkillsFactory(directory),
     ReadSkillFile: ReadSkillFileFactory(directory, host),
-    RunSkillScript: RunSkillScriptFactory(directory, $),
+    RunSkillScript: RunSkillScriptFactory(directory, $, scriptTimeoutMs),
     UseSkill: UseSkillFactory(directory, host, onSkillLoaded),
   };
 };
@@ -234,7 +235,8 @@ ${content}
 
 const RunSkillScriptFactory = (
   directory: string,
-  $: ((strings: TemplateStringsArray, ...values: unknown[]) => { text: () => Promise<string> }) & { cwd: (d: string) => ReturnType<typeof $> }
+  $: ((strings: TemplateStringsArray, ...values: unknown[]) => { text: () => Promise<string> }) & { cwd: (d: string) => ReturnType<typeof $> },
+  scriptTimeoutMs: number = SKILL_SCRIPT_TIMEOUT_MS,
 ) => {
   return {
     async execute(args: { skill: string; script: string; arguments?: string[] }, ctx?: { sessionID?: string; abort?: AbortSignal }) {
@@ -262,7 +264,7 @@ const RunSkillScriptFactory = (
         const result = await runBoundSkillScript(
           $`${script.absolutePath} ${scriptArgs}`.text(),
           ctx?.abort,
-          SKILL_SCRIPT_TIMEOUT_MS,
+          scriptTimeoutMs,
           script.absolutePath,
         );
         return result;

@@ -227,12 +227,32 @@ describe("resolveSkillOrSuggest", () => {
  * Single-pass tool discovery. Each tool invocation must complete with exactly one
  * discoverAllSkills pass.
  *
- * NOTE: These tests use `mock.method(console, "warn", ...)` to count duplicate-
- * discovery warnings. Bun's test runner does not provide `mock.method` (a Node.js
- * API). These tests are deferred until Bun supports the API or we find an
- * alternative counting strategy.
+ * Implementation note: Bun's test runner does not implement `mock.method`
+ * (a Node-only API). We replace it with a lightweight spy that wraps
+ * `console.warn` and records the raw arguments so we can count only the
+ * duplicate-discovery warnings surfaced by `defaultOnDuplicate`.
  */
-describe.skip("single-pass tool discovery", () => {
+describe("single-pass tool discovery", () => {
+  type WarnSpy = {
+    calls: unknown[][];
+    restore: () => void;
+  };
+
+  function spyConsoleWarn(): WarnSpy {
+    const original = console.warn;
+    const calls: unknown[][] = [];
+    console.warn = (...args: unknown[]) => {
+      calls.push(args);
+    };
+    return {
+      calls,
+      restore: () => {
+        console.warn = original;
+      },
+    };
+  }
+
+
   let workspace: FixtureWorkspace;
   const previousSuperpowersMode = process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE;
 
@@ -253,10 +273,10 @@ describe.skip("single-pass tool discovery", () => {
   });
 
   /** Build a counting predicate that filters to duplicate-discovery warnings only. */
-  function discoveryCount(warnSpy: ReturnType<typeof mock.method>): () => number {
-    return () => warnSpy.mock.calls.filter(
-      (c) => typeof c.arguments[0] === "string"
-        && (c.arguments[0] as string).startsWith("Skill name conflict:"),
+  function discoveryCount(warnSpy: WarnSpy): () => number {
+    return () => warnSpy.calls.filter(
+      (c) => typeof c[0] === "string"
+        && (c[0] as string).startsWith("Skill name conflict:"),
     ).length;
   }
 
@@ -265,7 +285,7 @@ describe.skip("single-pass tool discovery", () => {
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
-    const warnSpy = mock.method(console, "warn", () => {});
+    const warnSpy = spyConsoleWarn();
     try {
       const countBefore = discoveryCount(warnSpy)();
       const result = await tools.UseSkill.execute(
@@ -276,7 +296,7 @@ describe.skip("single-pass tool discovery", () => {
       assert.match(result, /loaded\./i, "use_skill reports a successful load");
       assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful use_skill");
     } finally {
-      warnSpy.mock.restore();
+      warnSpy.restore();
     }
   });
 
@@ -285,7 +305,7 @@ describe.skip("single-pass tool discovery", () => {
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
-    const warnSpy = mock.method(console, "warn", () => {});
+    const warnSpy = spyConsoleWarn();
     try {
       const countBefore = discoveryCount(warnSpy)();
       const result = await tools.ReadSkillFile.execute(
@@ -296,7 +316,7 @@ describe.skip("single-pass tool discovery", () => {
       assert.match(result, /loaded\./i, "read_skill_file reports a successful read");
       assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful read_skill_file");
     } finally {
-      warnSpy.mock.restore();
+      warnSpy.restore();
     }
   });
 
@@ -305,7 +325,7 @@ describe.skip("single-pass tool discovery", () => {
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
-    const warnSpy = mock.method(console, "warn", () => {});
+    const warnSpy = spyConsoleWarn();
     try {
       const countBefore = discoveryCount(warnSpy)();
       const result = await tools.RunSkillScript.execute(
@@ -316,7 +336,7 @@ describe.skip("single-pass tool discovery", () => {
       assert.ok(typeof result === "string", "run_skill_script returns a string result");
       assert.equal(discovered, 1, "exactly one discoverAllSkills pass per successful run_skill_script");
     } finally {
-      warnSpy.mock.restore();
+      warnSpy.restore();
     }
   });
 
@@ -325,7 +345,7 @@ describe.skip("single-pass tool discovery", () => {
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
-    const warnSpy = mock.method(console, "warn", () => {});
+    const warnSpy = spyConsoleWarn();
     try {
       const countBefore = discoveryCount(warnSpy)();
       const result = await tools.UseSkill.execute(
@@ -340,7 +360,7 @@ describe.skip("single-pass tool discovery", () => {
       );
       assert.equal(discovered, 1, "missing skill resolution still runs exactly one discovery");
     } finally {
-      warnSpy.mock.restore();
+      warnSpy.restore();
     }
   });
 
@@ -351,7 +371,7 @@ describe.skip("single-pass tool discovery", () => {
 
     // Pick a string far from any fixture skill name to stay below the match threshold.
     const FAR_OFF_NAME = "zzqqxxccvvbbnnmm";
-    const warnSpy = mock.method(console, "warn", () => {});
+    const warnSpy = spyConsoleWarn();
     try {
       const countBefore = discoveryCount(warnSpy)();
       const result = await tools.ReadSkillFile.execute(
@@ -366,7 +386,7 @@ describe.skip("single-pass tool discovery", () => {
       );
       assert.equal(discovered, 1, "missing skill resolution still runs exactly one discovery");
     } finally {
-      warnSpy.mock.restore();
+      warnSpy.restore();
     }
   });
 });
@@ -374,12 +394,17 @@ describe.skip("single-pass tool discovery", () => {
 /**
  * runBoundSkillScript bounded execution.
  *
- * NOTE: Timeout/abort tests use `mock.timers.tick()` which is a Node.js API
- * not fully supported in Bun's test runner. These tests are deferred.
+ * Implementation note: Bun's test runner does not implement `mock.timers`
+ * (a Node-only API). The abort and cancellation tests work with real timers
+ * because the abort/resolve always wins before the timeout fires and the
+ * cleanup clears the timer. The pure-helper timeout test uses a tiny real
+ * timeout (10ms) instead of a mocked 30000ms clock. The integration timeout
+ * test relies on the optional `scriptTimeoutMs` parameter of
+ * `createSkillTools` so the bound stays small.
  */
-describe.skip("runBoundSkillScript bounded execution", () => {
+describe("runBoundSkillScript bounded execution", () => {
   /**
-   * Drain microtasks queued by a `mock.timers.tick`.
+   * Drain microtasks queued after an async resolution to let `.then` callbacks run.
    */
   async function drainMicrotasks(): Promise<void> {
     for (let i = 0; i < 5; i++) {
@@ -402,39 +427,19 @@ describe.skip("runBoundSkillScript bounded execution", () => {
       );
     });
 
-    test("returns the deterministic timeout message after the bound elapses (mocked clock)", async () => {
-      mock.timers.enable({ apis: ["setTimeout"] });
-      try {
-        const neverResolving = new Promise<string>(() => {});
-        const helperPromise = runBoundSkillScript(
-          neverResolving,
-          undefined,
-          30_000,
-          "/skills/foo/build.sh",
-        );
-
-        let resolved = false;
-        let resolvedValue: string | undefined;
-        helperPromise.then((v) => {
-          resolved = true;
-          resolvedValue = v;
-        });
-
-        await drainMicrotasks();
-        assert.equal(resolved, false, "helper must not resolve before the timeout fires");
-
-        mock.timers.tick(30_000);
-        await drainMicrotasks();
-
-        assert.equal(resolved, true, "helper must resolve after the timeout fires");
-        assert.equal(
-          resolvedValue,
-          `Script "/skills/foo/build.sh" timed out after 30000ms.`,
-          "timeout message must be deterministic and carry the script path + bound",
-        );
-      } finally {
-        mock.timers.reset();
-      }
+    test("returns the deterministic timeout message after the bound elapses (real clock)", async () => {
+      const neverResolving = new Promise<string>(() => {});
+      const result = await runBoundSkillScript(
+        neverResolving,
+        undefined,
+        10,
+        "/skills/foo/build.sh",
+      );
+      assert.equal(
+        result,
+        `Script "/skills/foo/build.sh" timed out after 10ms.`,
+        "timeout message must be deterministic and carry the script path + bound",
+      );
     });
 
     test("returns the cancellation message when the abort signal is already aborted at call time", async () => {
@@ -454,39 +459,34 @@ describe.skip("runBoundSkillScript bounded execution", () => {
     });
 
     test("returns the cancellation message when the abort signal fires mid-flight", async () => {
-      mock.timers.enable({ apis: ["setTimeout"] });
-      try {
-        const ac = new AbortController();
-        const neverResolving = new Promise<string>(() => {});
-        const helperPromise = runBoundSkillScript(
-          neverResolving,
-          ac.signal,
-          30_000,
-          "/skills/foo/build.sh",
-        );
+      const ac = new AbortController();
+      const neverResolving = new Promise<string>(() => {});
+      const helperPromise = runBoundSkillScript(
+        neverResolving,
+        ac.signal,
+        30_000,
+        "/skills/foo/build.sh",
+      );
 
-        let resolved = false;
-        let resolvedValue: string | undefined;
-        helperPromise.then((v) => {
-          resolved = true;
-          resolvedValue = v;
-        });
+      let resolved = false;
+      let resolvedValue: string | undefined;
+      helperPromise.then((v) => {
+        resolved = true;
+        resolvedValue = v;
+      });
 
-        await drainMicrotasks();
-        assert.equal(resolved, false, "helper must not resolve before abort fires");
+      await drainMicrotasks();
+      assert.equal(resolved, false, "helper must not resolve before abort fires");
 
-        ac.abort();
-        await drainMicrotasks();
+      ac.abort();
+      await drainMicrotasks();
 
-        assert.equal(resolved, true, "helper must resolve after abort fires");
-        assert.equal(
-          resolvedValue,
-          `Script "/skills/foo/build.sh" cancelled.`,
-          "abort message must be deterministic and carry the script path",
-        );
-      } finally {
-        mock.timers.reset();
-      }
+      assert.equal(resolved, true, "helper must resolve after abort fires");
+      assert.equal(
+        resolvedValue,
+        `Script "/skills/foo/build.sh" cancelled.`,
+        "abort message must be deterministic and carry the script path",
+      );
     });
   });
 
@@ -576,41 +576,24 @@ describe.skip("runBoundSkillScript bounded execution", () => {
       }
     });
 
-    test("returns the deterministic timeout message after 30000ms with a never-resolving shell stub", async () => {
+    test("returns the deterministic timeout message after 10ms with a never-resolving shell stub", async () => {
       const { shell, textCalledPromise } = createNeverResolvingShellStub();
       const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
-      const tools = createSkillTools(host, shell as any, workspace.projectRoot);
+      const tools = createSkillTools(host, shell as any, workspace.projectRoot, undefined, 10);
 
-      mock.timers.enable({ apis: ["setTimeout"] });
-      try {
-        const toolPromise = tools.RunSkillScript.execute(
-          { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["hi"] },
-          { sessionID: "u3-timeout" } as any,
-        );
+      const toolPromise = tools.RunSkillScript.execute(
+        { skill: "scripted-skill", script: "bin/echo.sh", arguments: ["hi"] },
+        { sessionID: "u3-timeout" } as any,
+      );
 
-        let resolved = false;
-        let resolvedValue: string | undefined;
-        toolPromise.then((v) => {
-          resolved = true;
-          resolvedValue = v as string;
-        });
+      await textCalledPromise;
 
-        await textCalledPromise;
-        await drainMicrotasks();
-        assert.equal(resolved, false, "tool must not resolve before the bound elapses");
-
-        mock.timers.tick(30_000);
-        await drainMicrotasks();
-
-        assert.equal(resolved, true, "tool must resolve after 30000ms of mocked time");
-        assert.equal(
-          resolvedValue,
-          `Script "${path.join(workspace.scriptedSkillPath, "bin/echo.sh")}" timed out after 30000ms.`,
-          "tool must surface the deterministic timeout message carrying the script path + bound",
-        );
-      } finally {
-        mock.timers.reset();
-      }
+      const result = await toolPromise;
+      assert.equal(
+        result,
+        `Script "${path.join(workspace.scriptedSkillPath, "bin/echo.sh")}" timed out after 10ms.`,
+        "tool must surface the deterministic timeout message carrying the script path + bound",
+      );
     });
 
     test("returns the cancellation message when ctx.abort fires while the shell is still running", async () => {

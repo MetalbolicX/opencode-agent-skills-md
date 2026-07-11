@@ -12,10 +12,9 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "url";
 
 // Resolve the fixture root relative to this file's location.
-// Fixtures live at packages/opencode-agent-skills-md/tests/fixtures/skills/ in the
-// monorepo source; after the regression they will live at tests/fixtures/skills/.
+// Fixtures live at tests/fixtures/skills/ in the single-package Bun layout.
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fixtureRoot = path.resolve(here, "..", "packages", "opencode-agent-skills-md", "tests", "fixtures", "skills");
+const fixtureRoot = path.resolve(here, "..", "tests", "fixtures", "skills");
 
 export interface FixtureWorkspace {
   projectRoot: string;

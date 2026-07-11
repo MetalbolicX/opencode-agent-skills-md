@@ -23,7 +23,7 @@ starting, honor its STOP conditions, and update your row when done.
 | 013 | Prune dead code (superpowers stub + keyword fn) | P2 | S | — | DONE |
 | 014 | Make `package.json` publish-ready | P1 | S | — | DONE |
 | 015 | Rewrite the stale README | P1 | S | — | DONE |
-| 016 | Restore the skipped Bun tests | P2 | M | — | TODO |
+| 016 | Restore the skipped Bun tests | P2 | M | — | DONE |
 | 017 | Add embeddings parity tests | P2 | M | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
