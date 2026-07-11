@@ -1,7 +1,6 @@
 # opencode-agent-skills-md
 
 <p align="center">
-  <a href="https://github.com/MetalbolicX/opencode-agent-skills-md/actions/workflows/release.yml"><img alt="release" src="https://img.shields.io/github/actions/workflow/status/MetalbolicX/opencode-agent-skills-md/release.yml?style=flat-square&logo=githubactions&label=release" /></a>
   <a href="https://www.npmjs.com/package/opencode-agent-skills-md"><img alt="npm" src="https://img.shields.io/npm/v/opencode-agent-skills-md?style=flat-square&logo=npm" /></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/MetalbolicX/opencode-agent-skills-md?style=flat-square" /></a>
 </p>
@@ -36,24 +35,7 @@
 
 ## Installation
 
-### Quick install (recommended)
-
-```bash
-npx opencode-agent-skills-md install
-```
-
-This registers the plugin in your global OpenCode config and verifies the installation. Restart OpenCode to activate.
-
-### CLI commands
-
-After installing, the following commands are available:
-
-- `oas install` — register the plugin in the global OpenCode config
-- `oas uninstall` — remove the plugin from the global OpenCode config
-- `oas status` — check whether the plugin is currently installed
-- `oas doctor` — validate the OpenCode configuration health
-
-### From npm (alternative)
+### From npm
 
 ```bash
 npm install -g opencode-agent-skills-md
@@ -71,13 +53,15 @@ To pin a specific version:
 
 ```json
 {
-  "plugin": ["opencode-agent-skills-md@0.7.0"]
+  "plugin": ["opencode-agent-skills-md@1.4.0"]
 }
 ```
 
-### Manual configuration (fallback)
+Restart OpenCode after updating the config.
 
-If you prefer not to use the CLI, add the plugin entry manually to `~/.config/opencode/opencode.json`:
+### Manual configuration
+
+If you prefer not to install globally, add the plugin entry manually to `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -97,11 +81,23 @@ bun run typecheck
 bun test
 ```
 
-The plugin entrypoint is `src/plugin.ts`. Symlink it into your local OpenCode plugin directory:
+The plugin entrypoint is `src/plugin.ts`. To use the development build with OpenCode, run the included install script, which writes a tiny re-export shim into `.opencode/plugins/skills.js`:
 
 ```bash
-mkdir -p ~/.config/opencode/plugins
-ln -sf "$(pwd)/src/plugin.ts" ~/.config/opencode/plugins/skills.ts
+bun run install-local
+```
+
+This is equivalent to:
+
+```bash
+mkdir -p .opencode/plugins
+echo 'export { SkillsPlugin } from "./src/plugin.ts";' > .opencode/plugins/skills.js
+```
+
+You can verify the shim is in place with:
+
+```bash
+bun run status
 ```
 
 ## Usage
@@ -114,6 +110,10 @@ The plugin discovers skills from these locations, in priority order (first match
 2. `.claude/skills/` (Project - Claude)
 3. `~/.config/opencode/skills/` (User - OpenCode)
 4. `~/.claude/skills/` (User - Claude)
+5. `~/.claude/plugins/cache/` (Claude plugin cache)
+6. `~/.claude/plugins/marketplaces/` (Claude marketplace, via `installed_plugins.json`)
+
+The first four are scanned in order; roots 5 and 6 are appended after the OpenCode/Claude skill roots, contributing additional skills but still respecting the first-match-wins rule.
 
 ### Tools
 
@@ -172,7 +172,7 @@ get_available_skills({ query: "refactor" })
 4. `bun test`
 5. `npm pack --dry-run` (from the package directory to inspect contents)
 6. `npm publish --access public` (from the package directory, not the workspace root)
-7. `git tag v1.3.0 && git push origin v1.3.0` (only after publish succeeds)
+7. `git tag v1.4.0 && git push origin v1.4.0` (only after publish succeeds)
 
 ## Contributing
 

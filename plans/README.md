@@ -22,7 +22,7 @@ starting, honor its STOP conditions, and update your row when done.
 | 012 | Harden chat session lifecycle | P1 | M | — | DONE |
 | 013 | Prune dead code (superpowers stub + keyword fn) | P2 | S | — | DONE |
 | 014 | Make `package.json` publish-ready | P1 | S | — | DONE |
-| 015 | Rewrite the stale README | P1 | S | — | TODO |
+| 015 | Rewrite the stale README | P1 | S | — | DONE |
 | 016 | Restore the skipped Bun tests | P2 | M | — | TODO |
 | 017 | Add embeddings parity tests | P2 | M | — | TODO |
 
