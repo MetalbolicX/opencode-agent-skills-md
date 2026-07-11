@@ -38,6 +38,7 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Pruned dead code: deleted `src/superpowers.ts` stub (6-line no-op never imported by anything) and annotated `matchSkillsByKeyword` as `@internal`.
 - Removed a stale `.tgz` artifact from the repository.
+- **Removed `@huggingface/transformers` and `onnxruntime-node`**: the ONNX model cache suffered from a corrupted Protobuf file that could not be reliably fixed at the dependency level. Semantic matching now uses bag-of-words only. The public API (`createMatcher`, `matchSkills`, `cosineSimilarity`) is unchanged.
 
 ### Added
 
