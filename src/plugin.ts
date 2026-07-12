@@ -221,6 +221,7 @@ const getCachedSkills = async (directory: string): Promise<Map<string, Skill>> =
 interface ChatMessageOutput {
   message?: {
     sessionID?: string;
+    info?: { role?: string };
     model?: { providerID: string; modelID: string };
     agent?: string;
   };
@@ -378,10 +379,17 @@ export const SkillsPlugin: PluginFactory = async ({
         trigger: skill.trigger,
       }));
 
-      const context: SkillHostContext = {
-        model: rawOutput.message.model,
-        agent: rawOutput.message.agent,
-      };
+      // Only treat user/assistant messages as authoritative for session
+      // identity (model + agent). Tool/injected messages can carry metadata
+      // that does not reflect the active conversation; forwarding it would
+      // overwrite the "last used model" / "mostly used agent" state.
+      const messageRole = rawOutput.message.info?.role;
+      const context: SkillHostContext = messageRole === "user" || messageRole === "assistant"
+        ? {
+            model: rawOutput.message.model,
+            agent: rawOutput.message.agent,
+          }
+        : await host.client.getSessionContext(sessionID) ?? {};
 
       if (await isFirstMessageSetup(sessionID)) {
         await injectBootstrapSkills(sessionID, skillsByName, context);
