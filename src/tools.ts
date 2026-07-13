@@ -10,9 +10,17 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { OpencodeSkillHost } from "./host";
-import type { Skill, SkillSummary } from "./types";
+import type { SessionContext, Skill, SkillSummary } from "./types";
 import { discoverAllSkills, findClosestMatch, listSkillFiles, resolveSkill, searchSkills } from "./skills";
 import { debugLog } from "./utils";
+
+/** Execution context passed to skill tools by the OpenCode runtime. */
+interface SkillToolContext {
+  sessionID?: string;
+  messageID?: string;
+  agent?: string;
+  abort?: AbortSignal;
+}
 
 /** Escape XML special characters to prevent wrapper breakout. */
 const escapeXml = (s: string): string => {
@@ -194,7 +202,7 @@ const GetAvailableSkillsFactory = (directory: string) => {
 
 const ReadSkillFileFactory = (directory: string, host: OpencodeSkillHost) => {
   return {
-    async execute(args: { skill: string; filename: string }, ctx?: { sessionID?: string }) {
+    async execute(args: { skill: string; filename: string }, ctx?: SkillToolContext) {
       const resolution = await resolveSkillOrSuggest(directory, args.skill);
       if (!resolution.ok) return resolution.message;
       const skill = resolution.skill;
@@ -218,7 +226,11 @@ ${content}
 </skill-file>`;
 
         const sessionID = ctx?.sessionID ?? "";
-        const context = host.client.getSessionContext(sessionID);
+        const cachedContext = host.client.getSessionContext(sessionID);
+        const context: SessionContext = {
+          agent: ctx?.agent ?? cachedContext?.agent,
+          model: cachedContext?.model,
+        };
         await host.client.injectContent(sessionID, wrappedContent, context);
 
         return `File "${args.filename}" from skill "${skill.name}" loaded.`;
@@ -291,7 +303,7 @@ const UseSkillFactory = (
   onSkillLoaded?: OnSkillLoaded
 ) => {
   return {
-    async execute(args: { skill: string }, ctx?: { sessionID?: string }) {
+    async execute(args: { skill: string }, ctx?: SkillToolContext) {
       const resolution = await resolveSkillOrSuggest(directory, args.skill);
       if (!resolution.ok) return resolution.message;
       const skill = resolution.skill;
@@ -320,7 +332,11 @@ ${skill.template}
 </skill>`;
 
       const sessionID = ctx?.sessionID ?? "";
-      const context = host.client.getSessionContext(sessionID);
+      const cachedContext = host.client.getSessionContext(sessionID);
+      const context: SessionContext = {
+        agent: ctx?.agent ?? cachedContext?.agent,
+        model: cachedContext?.model,
+      };
       await host.client.injectContent(sessionID, skillContent, context);
 
       onSkillLoaded?.(sessionID, skill.name);

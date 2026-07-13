@@ -218,11 +218,19 @@ const getCachedSkills = async (directory: string): Promise<Map<string, Skill>> =
   return _discoveryCache.result;
 };
 
+interface ChatMessageInput {
+  sessionID?: string;
+  agent?: string;
+  model?: { providerID: string; modelID: string };
+  messageID?: string;
+  variant?: string;
+}
+
 // Type for the chat.message output shape we handle
 interface ChatMessageOutput {
   message?: {
     sessionID?: string;
-    info?: { role?: string };
+    role?: string;
     model?: { providerID: string; modelID: string };
     agent?: string;
   };
@@ -372,7 +380,9 @@ export const SkillsPlugin: PluginFactory = async ({
     _touchSessionState: (sid: string) => touchSessionState(sessionStates, sid, Date.now()),
 
     "chat.message": async (input: unknown, output: unknown) => {
+      const rawInput = input as ChatMessageInput | null;
       const rawOutput = output as ChatMessageOutput | null;
+
       if (!rawOutput || typeof rawOutput !== "object") {
         debugLog("chat.message: missing or non-object output", rawOutput);
         return;
@@ -385,18 +395,33 @@ export const SkillsPlugin: PluginFactory = async ({
 
       const record = touchSessionState(sessionStates, sessionID, Date.now());
 
-      // Only real user messages represent the user's current selector choice.
-      // Tool/assistant messages must not overwrite the cached context.
-      if (rawOutput.message?.info?.role === "user") {
-        if (typeof rawOutput.message?.agent === "string") {
-          record.currentAgent = rawOutput.message.agent;
+      // The SDK's chat.message output.message is a UserMessage (role directly),
+      // and the input carries the user's selector choice. Prefer input because it
+      // is the prompt data from the UI, before any server-side resolution.
+      const userAgent =
+        typeof rawInput?.agent === "string"
+          ? rawInput.agent
+          : typeof rawOutput.message?.agent === "string"
+          ? rawOutput.message.agent
+          : undefined;
+
+      const userModel =
+        rawInput?.model &&
+        typeof rawInput.model.providerID === "string" &&
+        typeof rawInput.model.modelID === "string"
+          ? rawInput.model
+          : rawOutput.message?.model &&
+            typeof rawOutput.message.model.providerID === "string" &&
+            typeof rawOutput.message.model.modelID === "string"
+          ? rawOutput.message.model
+          : undefined;
+
+      if (rawOutput.message?.role === "user") {
+        if (userAgent) {
+          record.currentAgent = userAgent;
         }
-        if (
-          rawOutput.message?.model &&
-          typeof rawOutput.message.model.providerID === "string" &&
-          typeof rawOutput.message.model.modelID === "string"
-        ) {
-          record.currentModel = rawOutput.message.model;
+        if (userModel) {
+          record.currentModel = userModel;
         }
       }
 

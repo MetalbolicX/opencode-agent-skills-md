@@ -211,7 +211,7 @@ describe("plan 012: discovery is not called twice in one turn", () => {
     // Call chat.message — this triggers discoverAllSkills (turn 1)
     await plugin["chat.message"](
       {},
-      { message: { sessionID: "turn-test", model: {}, agent: "" }, parts: [{ type: "text", text: "hello" }] },
+      { message: { sessionID: "turn-test", role: "user", agent: "", model: { providerID: "", modelID: "" } }, parts: [{ type: "text", text: "hello" }] },
     );
 
     // Record how many injectContent calls happened after chat.message
@@ -394,12 +394,13 @@ describe("use_skill selector context", () => {
     const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
 
     try {
+      // SDK chat.message input carries the user's selection; output.message is the constructed UserMessage.
       await plugin["chat.message"](
-        {},
+        { agent: "build", model: { providerID: "anthropic", modelID: "opus" } },
         {
           message: {
             sessionID: "ctx-test",
-            info: { role: "user" },
+            role: "user",
             agent: "build",
             model: { providerID: "anthropic", modelID: "opus" },
           },
@@ -413,6 +414,61 @@ describe("use_skill selector context", () => {
         prompts[0]!.body.model?.modelID,
         "opus",
         "model must be forwarded from user message",
+      );
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("use_skill prefers the tool context agent when session cache is stale", async () => {
+    const { SkillsPlugin } = await loadPluginModule() as any;
+
+    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-tool-context-"));
+    const skillsDir = path.join(workspace, ".opencode", "skills", "test-skill");
+    await mkdir(skillsDir, { recursive: true });
+    await writeFile(
+      path.join(skillsDir, "SKILL.md"),
+      ["---", "name: test-skill", "description: test skill", "---", "", "# Test"].join("\n"),
+      "utf8",
+    );
+
+    const prompts: Array<{ path: { id: string }; body: { agent?: string; model?: { providerID: string; modelID: string } } }> = [];
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        prompt: async (input: typeof prompts[number]) => {
+          prompts.push(input);
+        },
+      },
+    };
+
+    const shell = Object.assign(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        return { text: async () => "" };
+      },
+      { cwd: () => shell },
+    ) as any;
+
+    const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
+
+    try {
+      // Prime the session cache with a stale selection (e.g. the previous turn).
+      const record = (plugin as any)._touchSessionState("ctx-test");
+      record.currentAgent = "plan";
+      record.currentModel = { providerID: "openai", modelID: "gpt-4" };
+      record.setupComplete = true; // skip bootstrap injection
+
+      await plugin.tool.UseSkill.execute(
+        { skill: "test-skill" },
+        { sessionID: "ctx-test", messageID: "msg-1", agent: "build" },
+      );
+
+      assert.equal(prompts.length, 1, "use_skill should inject exactly one prompt");
+      assert.equal(prompts[0]!.body.agent, "build", "agent must come from tool context, not stale cache");
+      assert.equal(
+        prompts[0]!.body.model?.modelID,
+        "gpt-4",
+        "model falls back to cached selection when tool context lacks it",
       );
     } finally {
       await rm(workspace, { recursive: true, force: true });
