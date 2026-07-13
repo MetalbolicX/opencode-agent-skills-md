@@ -11,7 +11,7 @@
  */
 
 import * as fs from "node:fs/promises";
-import type { SkillHostClient, SkillHostSession } from "./types";
+import type { SkillHostClient, SkillHostSession, SessionContext } from "./types";
 import { debugLog } from "./utils";
 
 export type OpencodeClient = {
@@ -36,20 +36,33 @@ export type OpencodeSkillHostClient = SkillHostClient;
 export interface OpencodeSkillHost {
   client: OpencodeSkillHostClient;
   session: (id: string) => SkillHostSession;
+  getSessionContext: (sessionID: string) => SessionContext | undefined;
 }
 
-export const createOpencodeSkillHost = (client: OpencodeClient): OpencodeSkillHost => {
+export const createOpencodeSkillHost = (
+  client: OpencodeClient,
+  getSessionContext: (sessionID: string) => SessionContext | undefined,
+): OpencodeSkillHost => {
   const skillClient: OpencodeSkillHostClient = {
-    async injectContent(sessionID, text) {
+    async injectContent(sessionID, text, context) {
+      // Forward the current turn's agent/model so the synthetic noReply message
+      // carries the user's actual selection. Without this, the server fills in
+      // the session default (created at session-init) which can differ from the
+      // current selection after a model/agent switch.
+      const resolved = context ?? getSessionContext(sessionID);
       await client.session.prompt({
         path: { id: sessionID },
         body: {
           noReply: true,
-          // Deliberately omit model/agent: synthetic noReply messages must not
-          // create a shadow UserMessage that flips the TUI model/agent selector.
+          ...(resolved?.agent && { agent: resolved.agent }),
+          ...(resolved?.model && { model: resolved.model }),
           parts: [{ type: "text", text, synthetic: true }],
         },
       });
+    },
+
+    getSessionContext(sessionID) {
+      return getSessionContext(sessionID);
     },
 
     async readFile(filePath) {
@@ -63,5 +76,5 @@ export const createOpencodeSkillHost = (client: OpencodeClient): OpencodeSkillHo
 
   const session = (id: string): SkillHostSession => ({ id });
 
-  return { client: skillClient, session };
+  return { client: skillClient, session, getSessionContext };
 };

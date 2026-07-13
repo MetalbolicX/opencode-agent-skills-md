@@ -109,7 +109,7 @@ describe("GetAvailableSkills trigger rendering", () => {
 
   test("renders a `trigger: <text>` line under the description when trigger is set", async () => {
     const stub = createStubClient();
-    const host = createOpencodeSkillHost(stub.client as any);
+    const host = createOpencodeSkillHost(stub.client as any, () => undefined);
     const tools = createSkillTools(host, (() => {}) as any, workspace);
 
     const result = await tools.GetAvailableSkills.execute({ query: "" } as any, { sessionID: "sess-tools" } as any);
@@ -120,7 +120,7 @@ describe("GetAvailableSkills trigger rendering", () => {
 
   test("omits the `trigger:` line when the skill has no trigger", async () => {
     const stub = createStubClient();
-    const host = createOpencodeSkillHost(stub.client as any);
+    const host = createOpencodeSkillHost(stub.client as any, () => undefined);
     const tools = createSkillTools(host, (() => {}) as any, workspace);
 
     const result = (await tools.GetAvailableSkills.execute(
@@ -281,7 +281,7 @@ describe("single-pass tool discovery", () => {
   }
 
   test("use_skill runs exactly one discovery pass per successful invocation", async () => {
-    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
@@ -301,7 +301,7 @@ describe("single-pass tool discovery", () => {
   });
 
   test("read_skill_file runs exactly one discovery pass per successful invocation", async () => {
-    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
@@ -321,7 +321,7 @@ describe("single-pass tool discovery", () => {
   });
 
   test("run_skill_script runs exactly one discovery pass per successful invocation", async () => {
-    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
@@ -341,7 +341,7 @@ describe("single-pass tool discovery", () => {
   });
 
   test("missing skill preserves the Did-you-mean miss message and runs one discovery", async () => {
-    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
@@ -365,7 +365,7 @@ describe("single-pass tool discovery", () => {
   });
 
   test("missing skill with no close match preserves the bare not-found message and runs one discovery", async () => {
-    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+    const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
     const shell = createShellRecorder();
     const tools = createSkillTools(host, shell.shell as any, workspace.projectRoot);
 
@@ -578,7 +578,7 @@ describe("runBoundSkillScript bounded execution", () => {
 
     test("returns the deterministic timeout message after 10ms with a never-resolving shell stub", async () => {
       const { shell, textCalledPromise } = createNeverResolvingShellStub();
-      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
       const tools = createSkillTools(host, shell as any, workspace.projectRoot, undefined, 10);
 
       const toolPromise = tools.RunSkillScript.execute(
@@ -598,7 +598,7 @@ describe("runBoundSkillScript bounded execution", () => {
 
     test("returns the cancellation message when ctx.abort fires while the shell is still running", async () => {
       const { shell, textCalledPromise } = createNeverResolvingShellStub();
-      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
       const tools = createSkillTools(host, shell as any, workspace.projectRoot);
 
       const ac = new AbortController();
@@ -636,7 +636,7 @@ describe("runBoundSkillScript bounded execution", () => {
         stdout: "",
         message: "shell exit error",
       });
-      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any);
+      const host = createOpencodeSkillHost(createMockOpencodeClient().client as any, () => undefined);
       const tools = createSkillTools(host, shell as any, workspace.projectRoot);
 
       const result = await tools.RunSkillScript.execute(

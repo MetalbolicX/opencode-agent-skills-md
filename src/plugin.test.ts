@@ -8,6 +8,8 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SkillSummary } from "./types";
 
@@ -351,9 +353,69 @@ describe("diagnostics and SDK shapes", () => {
 });
 
 /**
- * Regression: synthetic noReply injections must not shadow model/agent.
+ * Regression: synthetic noReply injections must forward the current user
+ * message's agent/model.
  *
- * The fix is enforced by the interface — injectContent no longer accepts
- * context, so synthetic messages cannot carry model/agent identity.
- * See host.test.ts for the contract test.
+ * Without this, the OpenCode server fills the session default agent/model on
+ * the synthetic UserMessage, causing the TUI selector to flip back to an
+ * earlier selection.
  */
+
+describe("use_skill selector context", () => {
+  test("chat.message bootstrap forwards user message agent/model into injection", async () => {
+    const { SkillsPlugin } = await loadPluginModule() as any;
+
+    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-context-"));
+    const skillsDir = path.join(workspace, ".opencode", "skills", "test-skill");
+    await mkdir(skillsDir, { recursive: true });
+    await writeFile(
+      path.join(skillsDir, "SKILL.md"),
+      ["---", "name: test-skill", "description: test skill", "---", "", "# Test"].join("\n"),
+      "utf8",
+    );
+
+    const prompts: Array<{ path: { id: string }; body: { agent?: string; model?: { providerID: string; modelID: string } } }> = [];
+    const client = {
+      session: {
+        messages: async () => ({ data: [] }),
+        prompt: async (input: typeof prompts[number]) => {
+          prompts.push(input);
+        },
+      },
+    };
+
+    const shell = Object.assign(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        return { text: async () => "" };
+      },
+      { cwd: () => shell },
+    ) as any;
+
+    const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
+
+    try {
+      await plugin["chat.message"](
+        {},
+        {
+          message: {
+            sessionID: "ctx-test",
+            info: { role: "user" },
+            agent: "build",
+            model: { providerID: "anthropic", modelID: "opus" },
+          },
+          parts: [{ type: "text", text: "hello" }],
+        },
+      );
+
+      assert.ok(prompts.length > 0, "bootstrap should inject a prompt");
+      assert.equal(prompts[0]!.body.agent, "build", "agent must be forwarded from user message");
+      assert.equal(
+        prompts[0]!.body.model?.modelID,
+        "opus",
+        "model must be forwarded from user message",
+      );
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+});

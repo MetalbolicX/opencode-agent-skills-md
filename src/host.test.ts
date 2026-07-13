@@ -3,7 +3,7 @@
  * into root src/host.test.ts.
  *
  * These tests verify createOpencodeSkillHost contract:
- *   - injectContent -> client.session.prompt (noReply + synthetic, never model/agent)
+ *   - injectContent -> client.session.prompt (noReply + synthetic, agent/model forwarded when known)
  *   - readFile passthrough (filesystem-backed)
  *   - readdir passthrough (filesystem-backed)
  *   - session(id) factory returns a SkillHostSession
@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createOpencodeSkillHost } from "./host";
+import type { SessionContext } from "./types";
 
 describe("createOpencodeSkillHost", () => {
   let workspace: string;
@@ -37,7 +38,7 @@ describe("createOpencodeSkillHost", () => {
     }
   });
 
-  test("injectContent translates to client.session.prompt with noReply + synthetic", async () => {
+  test("injectContent omits model/agent when no context is available", async () => {
     const prompts: Array<{
       path: { id: string };
       body: {
@@ -55,22 +56,70 @@ describe("createOpencodeSkillHost", () => {
         messages: async () => ({ data: [] }),
       },
     };
-    const host = createOpencodeSkillHost(stub as any);
+    const host = createOpencodeSkillHost(stub as any, () => undefined);
 
     await host.client.injectContent("sess-1", "hello world");
 
     assert.equal(prompts.length, 1);
     assert.deepEqual(prompts[0]!.path, { id: "sess-1" });
     assert.equal(prompts[0]!.body.noReply, true);
-    assert.equal(prompts[0]!.body.model, undefined, "model must not be forwarded");
-    assert.equal(prompts[0]!.body.agent, undefined, "agent must not be forwarded");
+    assert.equal(prompts[0]!.body.model, undefined, "model must not be forwarded when context is absent");
+    assert.equal(prompts[0]!.body.agent, undefined, "agent must not be forwarded when context is absent");
     assert.equal(prompts[0]!.body.parts[0]!.type, "text");
     assert.equal(prompts[0]!.body.parts[0]!.text, "hello world");
     assert.equal(prompts[0]!.body.parts[0]!.synthetic, true);
   });
 
+  test("injectContent forwards model/agent from the callback context", async () => {
+    const prompts: any[] = [];
+    const stub = {
+      session: {
+        prompt: async (input: any) => {
+          prompts.push(input);
+        },
+        messages: async () => ({ data: [] }),
+      },
+    };
+    const context: SessionContext = {
+      agent: "build",
+      model: { providerID: "anthropic", modelID: "opus" },
+    };
+    const host = createOpencodeSkillHost(stub as any, () => context);
+
+    await host.client.injectContent("sess-2", "hello world");
+
+    assert.equal(prompts.length, 1);
+    assert.equal(prompts[0].body.agent, "build");
+    assert.deepEqual(prompts[0].body.model, { providerID: "anthropic", modelID: "opus" });
+  });
+
+  test("injectContent explicit context overrides callback context", async () => {
+    const prompts: any[] = [];
+    const stub = {
+      session: {
+        prompt: async (input: any) => {
+          prompts.push(input);
+        },
+        messages: async () => ({ data: [] }),
+      },
+    };
+    const host = createOpencodeSkillHost(stub as any, () => ({
+      agent: "plan",
+      model: { providerID: "openai", modelID: "gpt-4" },
+    }));
+
+    await host.client.injectContent("sess-3", "hello world", {
+      agent: "build",
+      model: { providerID: "anthropic", modelID: "opus" },
+    });
+
+    assert.equal(prompts.length, 1);
+    assert.equal(prompts[0].body.agent, "build");
+    assert.deepEqual(prompts[0].body.model, { providerID: "anthropic", modelID: "opus" });
+  });
+
   test("readFile reads file content from the host's filesystem", async () => {
-    const host = createOpencodeSkillHost({} as any);
+    const host = createOpencodeSkillHost({} as any, () => undefined);
 
     const content = await host.client.readFile(fixtureFile);
 
@@ -78,7 +127,7 @@ describe("createOpencodeSkillHost", () => {
   });
 
   test("readdir lists directory entries from the host's filesystem", async () => {
-    const host = createOpencodeSkillHost({} as any);
+    const host = createOpencodeSkillHost({} as any, () => undefined);
 
     const entries = (await host.client.readdir(fixtureDir)).sort();
 
@@ -86,7 +135,7 @@ describe("createOpencodeSkillHost", () => {
   });
 
   test("session(id) returns a SkillHostSession with the supplied id", () => {
-    const host = createOpencodeSkillHost({} as any);
+    const host = createOpencodeSkillHost({} as any, () => undefined);
 
     const session = host.session("sess-factory");
 

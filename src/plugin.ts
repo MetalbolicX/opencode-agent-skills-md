@@ -8,7 +8,7 @@
  * Superpowers bootstrap) are preserved.
  */
 
-import type { Skill, SkillSummary } from "./types";
+import type { Skill, SkillSummary, SessionContext } from "./types";
 import { debugLog } from "./utils";
 import { discoverAllSkills, renderAvailableSkillsBlock, renderSkillPreflightBlock } from "./skills";
 import { createOpencodeSkillHost, type OpencodeSkillHostClient } from "./host";
@@ -88,6 +88,8 @@ export interface SessionState {
   pendingSkills: Set<string>;
   injectedSummaries: Set<string>;
   lastTouchedAt: number;
+  currentAgent?: string;
+  currentModel?: { providerID: string; modelID: string };
 }
 
 export const touchSessionState = (
@@ -154,11 +156,12 @@ const injectSkillsList = async (
   host: { client: OpencodeSkillHostClient },
   sessionID: string,
   precomputed?: Map<string, Skill>,
+  context?: SessionContext,
 ): Promise<void> => {
   const skillsByName = precomputed ?? await discoverAllSkills(directory);
   const skills = Array.from(skillsByName.values());
   if (skills.length === 0) return;
-  await host.client.injectContent(sessionID, renderAvailableSkillsBlock(skills));
+  await host.client.injectContent(sessionID, renderAvailableSkillsBlock(skills), context);
 };
 
 const toolMapping = `**Tool Mapping for OpenCode:**
@@ -182,6 +185,7 @@ const maybeInjectSuperpowersBootstrap = async (
   host: { client: OpencodeSkillHostClient },
   sessionID: string,
   precomputed?: Map<string, Skill>,
+  context?: SessionContext,
 ): Promise<void> => {
   if (process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE !== 'true') return;
   const skillsByName = precomputed ?? await discoverAllSkills(directory);
@@ -198,7 +202,7 @@ ${toolMapping}
 
 ${skillsNamespace}
 </EXTREMELY_IMPORTANT>`;
-  await host.client.injectContent(sessionID, content);
+  await host.client.injectContent(sessionID, content, context);
 };
 
 // Module-scoped discovery cache with 5-second TTL to avoid duplicate filesystem/parsing work
@@ -249,9 +253,19 @@ export const SkillsPlugin: PluginFactory = async ({
   directory: string;
   matcher?: Matcher;
 }) => {
-  const host = createOpencodeSkillHost(client as Parameters<typeof createOpencodeSkillHost>[0]);
-
   const sessionStates = new Map<string, SessionState>();
+
+  const host = createOpencodeSkillHost(
+    client as Parameters<typeof createOpencodeSkillHost>[0],
+    (sessionID: string): SessionContext | undefined => {
+      const record = sessionStates.get(sessionID);
+      if (!record) return undefined;
+      return {
+        agent: record.currentAgent,
+        model: record.currentModel,
+      };
+    },
+  );
 
   const getLoadedSkills = (sessionID: string): Set<string> => {
     return touchSessionState(sessionStates, sessionID, Date.now()).loadedSkills;
@@ -300,17 +314,19 @@ export const SkillsPlugin: PluginFactory = async ({
   const injectBootstrapSkills = async (
     sessionID: string,
     skillsByName: Map<string, Skill>,
+    context?: SessionContext,
   ): Promise<void> => {
     const record = touchSessionState(sessionStates, sessionID, Date.now());
     record.setupComplete = true;
-    await maybeInjectSuperpowersBootstrap(directory, host, sessionID, skillsByName);
-    await injectSkillsList(directory, host, sessionID, skillsByName);
+    await maybeInjectSuperpowersBootstrap(directory, host, sessionID, skillsByName, context);
+    await injectSkillsList(directory, host, sessionID, skillsByName, context);
   };
 
   const handleKeywordMatch = async (
     userText: string,
     sessionID: string,
     summaries: SkillSummary[],
+    context?: SessionContext,
   ): Promise<void> => {
     if (!isPreferenceLayerEnabled()) return;
     if (!userText) return;
@@ -334,7 +350,7 @@ export const SkillsPlugin: PluginFactory = async ({
       record.injectedSummaries.add(skill.name);
     }
 
-    await host.client.injectContent(sessionID, injectionText);
+    await host.client.injectContent(sessionID, injectionText, context);
   };
 
   const tools = createSkillTools(
@@ -367,6 +383,28 @@ export const SkillsPlugin: PluginFactory = async ({
       }
       const sessionID = rawOutput.message.sessionID;
 
+      const record = touchSessionState(sessionStates, sessionID, Date.now());
+
+      // Only real user messages represent the user's current selector choice.
+      // Tool/assistant messages must not overwrite the cached context.
+      if (rawOutput.message?.info?.role === "user") {
+        if (typeof rawOutput.message?.agent === "string") {
+          record.currentAgent = rawOutput.message.agent;
+        }
+        if (
+          rawOutput.message?.model &&
+          typeof rawOutput.message.model.providerID === "string" &&
+          typeof rawOutput.message.model.modelID === "string"
+        ) {
+          record.currentModel = rawOutput.message.model;
+        }
+      }
+
+      const context: SessionContext = {
+        agent: record.currentAgent,
+        model: record.currentModel,
+      };
+
       const skillsByName = await getCachedSkills(directory);
       const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(skill => ({
         name: skill.name,
@@ -375,7 +413,7 @@ export const SkillsPlugin: PluginFactory = async ({
       }));
 
       if (await isFirstMessageSetup(sessionID)) {
-        await injectBootstrapSkills(sessionID, skillsByName);
+        await injectBootstrapSkills(sessionID, skillsByName, context);
         return;
       }
 
@@ -389,7 +427,7 @@ export const SkillsPlugin: PluginFactory = async ({
         .join("\n")
         .trim();
 
-      await handleKeywordMatch(userText, sessionID, summaries);
+      await handleKeywordMatch(userText, sessionID, summaries, context);
     },
 
     event: async ({ event }: { event?: EventPayload }) => {
@@ -401,13 +439,18 @@ export const SkillsPlugin: PluginFactory = async ({
           debugLog("event: session.compacted missing sessionID", event);
           return;
         }
-        await maybeInjectSuperpowersBootstrap(directory, host, sessionID);
-        await injectSkillsList(directory, host, sessionID);
+        const context = host.client.getSessionContext(sessionID);
+        await maybeInjectSuperpowersBootstrap(directory, host, sessionID, undefined, context);
+        await injectSkillsList(directory, host, sessionID, undefined, context);
         const record = touchSessionState(sessionStates, sessionID, Date.now());
+        const preservedAgent = record.currentAgent;
+        const preservedModel = record.currentModel;
         record.loadedSkills.clear();
         record.pendingSkills.clear();
         record.injectedSummaries.clear();
         record.setupComplete = false;
+        record.currentAgent = preservedAgent;
+        record.currentModel = preservedModel;
         _discoveryCache = null;
         return;
       }
