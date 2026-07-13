@@ -158,7 +158,6 @@ describe("plan 012: compaction resets setupComplete", () => {
       session: {
         messages: async () => ({ data: [] }),
         prompt: async () => {},
-        getSessionContext: async () => ({}),
         injectContent: async () => {},
       },
     };
@@ -199,7 +198,6 @@ describe("plan 012: discovery is not called twice in one turn", () => {
       session: {
         messages: async () => ({ data: [{ parts: [{ type: "text", text: "<available-skills>" }] }] }),
         prompt: async () => {},
-        getSessionContext: async () => ({}),
         injectContent: async (sessionID: string, content: string) => {
           injectCalls.push({ sessionID, content });
         },
@@ -353,126 +351,9 @@ describe("diagnostics and SDK shapes", () => {
 });
 
 /**
- * Regression tests for `use_skill` context attribution.
+ * Regression: synthetic noReply injections must not shadow model/agent.
  *
- * Bug: the `chat.message` hook forwards `message.model` and `message.agent`
- * from EVERY message — including tool/injected messages produced around a
- * `use_skill` call — into skill injection context. That polluted metadata
- * then overwrites the "last used model" / "mostly used agent" state derived
- * from the conversation.
- *
- * Fix contract:
- *   1. Non-conversational messages (tool/injected) MUST NOT propagate
- *      message.model/message.agent into injectContent.
- *   2. Real conversational messages (user/assistant) MUST still propagate
- *      valid model/agent context so behaviour is not regressed.
+ * The fix is enforced by the interface — injectContent no longer accepts
+ * context, so synthetic messages cannot carry model/agent identity.
+ * See host.test.ts for the contract test.
  */
-describe("use_skill context attribution", () => {
-  const createAttributionClient = () => {
-    const prompts: Array<{
-      path: { id: string };
-      body: {
-        model?: { providerID: string; modelID: string };
-        agent?: string;
-        parts: Array<{ type: string; text: string; synthetic?: boolean }>;
-      };
-    }> = [];
-    const client = {
-      session: {
-        // Return a message with <available-skills> so isFirstMessageSetup returns false
-        // (bootstrap already happened, we are on a regular turn).
-        messages: async () => ({
-          data: [
-            { parts: [{ type: "text", text: "<available-skills>" }] },
-          ],
-        }),
-        prompt: async (input: typeof prompts[number]) => {
-          prompts.push(input);
-        },
-        getSessionContext: async () => undefined,
-      },
-    };
-    return { client, prompts };
-  };
-
-  async function makeAttributionPlugin() {
-    const { SkillsPlugin } = await import("./plugin");
-    const shell = Object.assign(
-      (strings: TemplateStringsArray, ..._values: unknown[]) => {
-        return { text: async () => "" };
-      },
-      { cwd: () => shell },
-    ) as any;
-    const { client, prompts } = createAttributionClient();
-    const plugin = await SkillsPlugin({
-      client,
-      $: shell,
-      directory: "/fake/project/root",
-    } as any) as any;
-    return { plugin, prompts };
-  }
-
-  test("tool/injected message MUST NOT propagate its model/agent into injectContent", async () => {
-    const { plugin, prompts } = await makeAttributionPlugin();
-
-    // Simulate a chat.message event whose role is `tool` — the kind of message
-    // emitted around a use_skill invocation. It carries polluted model/agent
-    // metadata that must NOT be forwarded as authoritative context.
-    await plugin["chat.message"](
-      {},
-      {
-        message: {
-          sessionID: "attr-tool",
-          info: { role: "tool" },
-          model: { providerID: "evil", modelID: "wrong-model" },
-          agent: "wrong-agent",
-        },
-        parts: [{ type: "text", text: "use_skill foo" }],
-      },
-    );
-
-    // Find any prompt that was injected as part of this hook run.
-    // If the bug is present, the wrong model/agent would be forwarded.
-    const polluted = prompts.find(
-      (p) =>
-        p.body.model?.modelID === "wrong-model" ||
-        p.body.agent === "wrong-agent",
-    );
-    assert.equal(
-      polluted,
-      undefined,
-      "tool/injected message must not propagate wrong model/agent into injectContent",
-    );
-  });
-
-  test("user message DOES propagate valid model/agent into injectContent", async () => {
-    const { plugin, prompts } = await makeAttributionPlugin();
-
-    // Real conversational turn: role=user, real model/agent. The context
-    // must be forwarded so skill injection keeps working.
-    await plugin["chat.message"](
-      {},
-      {
-        message: {
-          sessionID: "attr-user",
-          info: { role: "user" },
-          model: { providerID: "good", modelID: "right-model" },
-          agent: "right-agent",
-        },
-        parts: [{ type: "text", text: "help me with auth" }],
-      },
-    );
-
-    // The keyword match path should produce an injected prompt carrying
-    // the user-role model/agent. If the fix is too aggressive and drops
-    // all context, this assertion will fail.
-    const forwarded = prompts.find(
-      (p) => p.body.model?.modelID === "right-model",
-    );
-    assert.ok(
-      forwarded,
-      "user message must still forward valid model context to injectContent",
-    );
-    assert.equal(forwarded?.body.agent, "right-agent");
-  });
-});

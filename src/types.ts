@@ -45,14 +45,8 @@ export interface DiscoveryPath {
   maxDepth: number;
 }
 
-export interface SkillHostContext {
-  model?: { providerID: string; modelID: string };
-  agent?: string;
-}
-
 export interface SkillHostClient {
-  injectContent(sessionID: string, text: string, context?: SkillHostContext): Promise<void>;
-  getSessionContext(sessionID: string): Promise<SkillHostContext | undefined>;
+  injectContent(sessionID: string, text: string): Promise<void>;
   readFile(path: string): Promise<string>;
   readdir(path: string): Promise<string[]>;
 }

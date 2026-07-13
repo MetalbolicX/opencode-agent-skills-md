@@ -11,7 +11,7 @@
  */
 
 import * as fs from "node:fs/promises";
-import type { SkillHostClient, SkillHostContext, SkillHostSession } from "./types";
+import type { SkillHostClient, SkillHostSession } from "./types";
 import { debugLog } from "./utils";
 
 export type OpencodeClient = {
@@ -40,44 +40,16 @@ export interface OpencodeSkillHost {
 
 export const createOpencodeSkillHost = (client: OpencodeClient): OpencodeSkillHost => {
   const skillClient: OpencodeSkillHostClient = {
-    async injectContent(sessionID, text, context) {
+    async injectContent(sessionID, text) {
       await client.session.prompt({
         path: { id: sessionID },
         body: {
           noReply: true,
-          model: context?.model,
-          agent: context?.agent,
+          // Deliberately omit model/agent: synthetic noReply messages must not
+          // create a shadow UserMessage that flips the TUI model/agent selector.
           parts: [{ type: "text", text, synthetic: true }],
         },
       });
-    },
-
-    async getSessionContext(sessionID) {
-      try {
-        const response = await client.session.messages({
-          path: { id: sessionID },
-          query: { limit: 50 },
-        });
-
-        if (response.data) {
-          for (const msg of response.data) {
-            if (
-              msg.info?.role === "user" &&
-              "model" in msg.info &&
-              msg.info.model
-            ) {
-              return {
-                model: msg.info.model,
-                agent: msg.info.agent,
-              };
-            }
-          }
-        }
-      } catch (error) {
-        debugLog("getSessionContext: session lookup failed", sessionID, (error as Error)?.name);
-      }
-
-      return undefined;
     },
 
     async readFile(filePath) {

@@ -217,8 +217,7 @@ ${content}
   </content>
 </skill-file>`;
 
-        const context = ctx?.sessionID ? await host.client.getSessionContext(ctx.sessionID) : undefined;
-        await host.client.injectContent(ctx?.sessionID ?? "", wrappedContent, context);
+        await host.client.injectContent(ctx?.sessionID ?? "", wrappedContent);
 
         return `File "${args.filename}" from skill "${skill.name}" loaded.`;
       } catch {
@@ -318,8 +317,7 @@ ${skill.template}
   </content>
 </skill>`;
 
-      const context = ctx?.sessionID ? await host.client.getSessionContext(ctx.sessionID) : undefined;
-      await host.client.injectContent(ctx?.sessionID ?? "", skillContent, context);
+      await host.client.injectContent(ctx?.sessionID ?? "", skillContent);
 
       onSkillLoaded?.(ctx?.sessionID ?? "", skill.name);
 
