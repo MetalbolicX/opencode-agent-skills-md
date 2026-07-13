@@ -8,10 +8,10 @@
  * Superpowers bootstrap) are preserved.
  */
 
-import type { Skill, SkillSummary, SessionContext } from "./types";
+import type { Skill, SkillSummary } from "./types";
 import { debugLog } from "./utils";
 import { discoverAllSkills, renderAvailableSkillsBlock, renderSkillPreflightBlock } from "./skills";
-import { createOpencodeSkillHost, type OpencodeSkillHostClient } from "./host";
+import { createOpencodeSkillHost } from "./host";
 import { createSkillTools } from "./tools";
 import {
   isPreferenceLayerEnabled,
@@ -88,8 +88,6 @@ export interface SessionState {
   pendingSkills: Set<string>;
   injectedSummaries: Set<string>;
   lastTouchedAt: number;
-  currentAgent?: string;
-  currentModel?: { providerID: string; modelID: string };
 }
 
 export const touchSessionState = (
@@ -151,59 +149,20 @@ export const deleteSessionState = (
   return state.delete(sessionID);
 };
 
-const injectSkillsList = async (
-  directory: string,
-  host: { client: OpencodeSkillHostClient },
-  sessionID: string,
-  precomputed?: Map<string, Skill>,
-  context?: SessionContext,
-): Promise<void> => {
-  const skillsByName = precomputed ?? await discoverAllSkills(directory);
-  const skills = Array.from(skillsByName.values());
-  if (skills.length === 0) return;
-  await host.client.injectContent(sessionID, renderAvailableSkillsBlock(skills), context);
+/**
+ * Append a synthetic text part to the chat.message output.
+ * Synthetic parts are invisible to keyword matching and are not re-injected
+ * after compaction — the next bootstrap recomputes them from scratch.
+ */
+const appendSyntheticText = (
+  output: ChatMessageOutput,
+  text: string,
+): void => {
+  output.parts ??= [];
+  output.parts.push({ type: "text", text, synthetic: true });
 };
 
-const toolMapping = `**Tool Mapping for OpenCode:**
-- \`TodoWrite\` → \`todowrite\`
-- \`Task\` tool with subagents → Use the \`task\` tool with \`subagent_type\`
-- \`Skill\` tool → \`use_skill\`
-- \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, \`Glob\`, \`Grep\`, \`WebFetch\` → Use the native lowercase OpenCode tools`;
 
-const skillsNamespace = `**Skill namespace priority:**
-1. Project: \`project:skill-name\`
-2. Claude project: \`claude-project:skill-name\`
-3. User: \`skill-name\`
-4. Claude user: \`claude-user:skill-name\`
-5. Plugin cache: \`claude-plugin-cache:skill-name\`
-6. Marketplace: \`claude-marketplace:skill-name\`
-
-The first discovered match wins.`;
-
-const maybeInjectSuperpowersBootstrap = async (
-  directory: string,
-  host: { client: OpencodeSkillHostClient },
-  sessionID: string,
-  precomputed?: Map<string, Skill>,
-  context?: SessionContext,
-): Promise<void> => {
-  if (process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE !== 'true') return;
-  const skillsByName = precomputed ?? await discoverAllSkills(directory);
-  const usingSuperpowersSkill = skillsByName.get('using-superpowers');
-  if (!usingSuperpowersSkill) return;
-  const content = `<EXTREMELY_IMPORTANT>
-You have superpowers.
-
-**IMPORTANT: The using-superpowers skill content is included below. It is ALREADY LOADED - do not call use_skill for it again. Use use_skill only for OTHER skills.**
-
-${usingSuperpowersSkill.template}
-
-${toolMapping}
-
-${skillsNamespace}
-</EXTREMELY_IMPORTANT>`;
-  await host.client.injectContent(sessionID, content, context);
-};
 
 // Module-scoped discovery cache with 5-second TTL to avoid duplicate filesystem/parsing work
 const DISCOVERY_CACHE_TTL_MS = 5000;
@@ -217,14 +176,6 @@ const getCachedSkills = async (directory: string): Promise<Map<string, Skill>> =
   _discoveryCache = { result: await discoverAllSkills(directory), timestamp: now };
   return _discoveryCache.result;
 };
-
-interface ChatMessageInput {
-  sessionID?: string;
-  agent?: string;
-  model?: { providerID: string; modelID: string };
-  messageID?: string;
-  variant?: string;
-}
 
 // Type for the chat.message output shape we handle
 interface ChatMessageOutput {
@@ -265,14 +216,6 @@ export const SkillsPlugin: PluginFactory = async ({
 
   const host = createOpencodeSkillHost(
     client as Parameters<typeof createOpencodeSkillHost>[0],
-    (sessionID: string): SessionContext | undefined => {
-      const record = sessionStates.get(sessionID);
-      if (!record) return undefined;
-      return {
-        agent: record.currentAgent,
-        model: record.currentModel,
-      };
-    },
   );
 
   const getLoadedSkills = (sessionID: string): Set<string> => {
@@ -319,22 +262,67 @@ export const SkillsPlugin: PluginFactory = async ({
     return !record.setupComplete;
   };
 
-  const injectBootstrapSkills = async (
+  /**
+   * Append bootstrap content (superpowers block + available-skills block) to
+   * output.parts. Sets setupComplete = true. Does NOT call session.prompt().
+   */
+  const appendBootstrapSkills = (
+    output: ChatMessageOutput,
     sessionID: string,
     skillsByName: Map<string, Skill>,
-    context?: SessionContext,
-  ): Promise<void> => {
+  ): void => {
     const record = touchSessionState(sessionStates, sessionID, Date.now());
     record.setupComplete = true;
-    await maybeInjectSuperpowersBootstrap(directory, host, sessionID, skillsByName, context);
-    await injectSkillsList(directory, host, sessionID, skillsByName, context);
+
+    if (process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE === 'true') {
+      const usingSuperpowersSkill = skillsByName.get('using-superpowers');
+      if (usingSuperpowersSkill) {
+        const toolMappingBlock = `**Tool Mapping for OpenCode:**
+- \`TodoWrite\` → \`todowrite\`
+- \`Task\` tool with subagents → Use the \`task\` tool with \`subagent_type\`
+- \`Skill\` tool → \`use_skill\`
+- \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, \`Glob\`, \`Grep\`, \`WebFetch\` → Use the native lowercase OpenCode tools`;
+
+        const skillsNamespaceBlock = `**Skill namespace priority:**
+1. Project: \`project:skill-name\`
+2. Claude project: \`claude-project:skill-name\`
+3. User: \`skill-name\`
+4. Claude user: \`claude-user:skill-name\`
+5. Plugin cache: \`claude-plugin-cache:skill-name\`
+6. Marketplace: \`claude-marketplace:skill-name\`
+
+The first discovered match wins.`;
+
+        const content = `<EXTREMELY_IMPORTANT>
+You have superpowers.
+
+**IMPORTANT: The using-superpowers skill content is included below. It is ALREADY LOADED - do not call use_skill for it again. Use use_skill only for OTHER skills.**
+
+${usingSuperpowersSkill.template}
+
+${toolMappingBlock}
+
+${skillsNamespaceBlock}
+</EXTREMELY_IMPORTANT>`;
+        appendSyntheticText(output, content);
+      }
+    }
+
+    const skills = Array.from(skillsByName.values());
+    if (skills.length > 0) {
+      appendSyntheticText(output, renderAvailableSkillsBlock(skills));
+    }
   };
 
+  /**
+   * Append keyword-matched skill preflight to output.parts. Does NOT call
+   * session.prompt(). Updates pendingSkills and injectedSummaries.
+   */
   const handleKeywordMatch = async (
+    output: ChatMessageOutput,
     userText: string,
     sessionID: string,
     summaries: SkillSummary[],
-    context?: SessionContext,
   ): Promise<void> => {
     if (!isPreferenceLayerEnabled()) return;
     if (!userText) return;
@@ -358,7 +346,7 @@ export const SkillsPlugin: PluginFactory = async ({
       record.injectedSummaries.add(skill.name);
     }
 
-    await host.client.injectContent(sessionID, injectionText, context);
+    appendSyntheticText(output, injectionText);
   };
 
   const tools = createSkillTools(
@@ -380,7 +368,6 @@ export const SkillsPlugin: PluginFactory = async ({
     _touchSessionState: (sid: string) => touchSessionState(sessionStates, sid, Date.now()),
 
     "chat.message": async (input: unknown, output: unknown) => {
-      const rawInput = input as ChatMessageInput | null;
       const rawOutput = output as ChatMessageOutput | null;
 
       if (!rawOutput || typeof rawOutput !== "object") {
@@ -393,42 +380,7 @@ export const SkillsPlugin: PluginFactory = async ({
       }
       const sessionID = rawOutput.message.sessionID;
 
-      const record = touchSessionState(sessionStates, sessionID, Date.now());
-
-      // The SDK's chat.message output.message is a UserMessage (role directly),
-      // and the input carries the user's selector choice. Prefer input because it
-      // is the prompt data from the UI, before any server-side resolution.
-      const userAgent =
-        typeof rawInput?.agent === "string"
-          ? rawInput.agent
-          : typeof rawOutput.message?.agent === "string"
-          ? rawOutput.message.agent
-          : undefined;
-
-      const userModel =
-        rawInput?.model &&
-        typeof rawInput.model.providerID === "string" &&
-        typeof rawInput.model.modelID === "string"
-          ? rawInput.model
-          : rawOutput.message?.model &&
-            typeof rawOutput.message.model.providerID === "string" &&
-            typeof rawOutput.message.model.modelID === "string"
-          ? rawOutput.message.model
-          : undefined;
-
-      if (rawOutput.message?.role === "user") {
-        if (userAgent) {
-          record.currentAgent = userAgent;
-        }
-        if (userModel) {
-          record.currentModel = userModel;
-        }
-      }
-
-      const context: SessionContext = {
-        agent: record.currentAgent,
-        model: record.currentModel,
-      };
+      touchSessionState(sessionStates, sessionID, Date.now());
 
       const skillsByName = await getCachedSkills(directory);
       const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(skill => ({
@@ -438,7 +390,7 @@ export const SkillsPlugin: PluginFactory = async ({
       }));
 
       if (await isFirstMessageSetup(sessionID)) {
-        await injectBootstrapSkills(sessionID, skillsByName, context);
+        appendBootstrapSkills(rawOutput, sessionID, skillsByName);
         return;
       }
 
@@ -452,7 +404,7 @@ export const SkillsPlugin: PluginFactory = async ({
         .join("\n")
         .trim();
 
-      await handleKeywordMatch(userText, sessionID, summaries, context);
+      await handleKeywordMatch(rawOutput, userText, sessionID, summaries);
     },
 
     event: async ({ event }: { event?: EventPayload }) => {
@@ -464,18 +416,11 @@ export const SkillsPlugin: PluginFactory = async ({
           debugLog("event: session.compacted missing sessionID", event);
           return;
         }
-        const context = host.client.getSessionContext(sessionID);
-        await maybeInjectSuperpowersBootstrap(directory, host, sessionID, undefined, context);
-        await injectSkillsList(directory, host, sessionID, undefined, context);
         const record = touchSessionState(sessionStates, sessionID, Date.now());
-        const preservedAgent = record.currentAgent;
-        const preservedModel = record.currentModel;
         record.loadedSkills.clear();
         record.pendingSkills.clear();
         record.injectedSummaries.clear();
         record.setupComplete = false;
-        record.currentAgent = preservedAgent;
-        record.currentModel = preservedModel;
         _discoveryCache = null;
         return;
       }

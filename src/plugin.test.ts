@@ -353,33 +353,40 @@ describe("diagnostics and SDK shapes", () => {
 });
 
 /**
- * Regression: synthetic noReply injections must forward the current user
- * message's agent/model.
+ * Regression tests: synthetic context flows through output.parts (not session.prompt()).
  *
- * Without this, the OpenCode server fills the session default agent/model on
- * the synthetic UserMessage, causing the TUI selector to flip back to an
- * earlier selection.
+ * After eliminating session.prompt() injection, all synthetic context (bootstrap,
+ * keyword preflight) is appended to output.parts directly. Agent/model forwarding
+ * is eliminated — the session selector is never mutated by synthetic injections.
  */
 
-describe("use_skill selector context", () => {
-  test("chat.message bootstrap forwards user message agent/model into injection", async () => {
+describe("output.parts injection (no session.prompt())", () => {
+  // TODO: fix in slice 3 — RED test for new output.parts behavior
+  test("chat.message bootstrap appends synthetic text to output.parts without calling session.prompt()", async () => {
     const { SkillsPlugin } = await loadPluginModule() as any;
 
-    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-context-"));
-    const skillsDir = path.join(workspace, ".opencode", "skills", "test-skill");
+    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-parts-"));
+    const skillsDir = path.join(workspace, ".opencode", "skills", "bootstrap-skill");
     await mkdir(skillsDir, { recursive: true });
     await writeFile(
       path.join(skillsDir, "SKILL.md"),
-      ["---", "name: test-skill", "description: test skill", "---", "", "# Test"].join("\n"),
+      [
+        "---",
+        "name: bootstrap-skill",
+        "description: a skill for bootstrap test",
+        "---",
+        "",
+        "# Bootstrap Skill",
+      ].join("\n"),
       "utf8",
     );
 
-    const prompts: Array<{ path: { id: string }; body: { agent?: string; model?: { providerID: string; modelID: string } } }> = [];
+    const promptCalls: unknown[] = [];
     const client = {
       session: {
         messages: async () => ({ data: [] }),
-        prompt: async (input: typeof prompts[number]) => {
-          prompts.push(input);
+        prompt: async (...args: unknown[]) => {
+          promptCalls.push(args);
         },
       },
     };
@@ -394,50 +401,59 @@ describe("use_skill selector context", () => {
     const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
 
     try {
-      // SDK chat.message input carries the user's selection; output.message is the constructed UserMessage.
-      await plugin["chat.message"](
-        { agent: "build", model: { providerID: "anthropic", modelID: "opus" } },
-        {
-          message: {
-            sessionID: "ctx-test",
-            role: "user",
-            agent: "build",
-            model: { providerID: "anthropic", modelID: "opus" },
-          },
-          parts: [{ type: "text", text: "hello" }],
+      const output = {
+        message: {
+          sessionID: "parts-test",
+          role: "user",
         },
+        parts: [] as Array<{ type?: string; text?: string; synthetic?: boolean }>,
+      };
+
+      // First message triggers bootstrap
+      await plugin["chat.message"](
+        {},
+        output,
       );
 
-      assert.ok(prompts.length > 0, "bootstrap should inject a prompt");
-      assert.equal(prompts[0]!.body.agent, "build", "agent must be forwarded from user message");
-      assert.equal(
-        prompts[0]!.body.model?.modelID,
-        "opus",
-        "model must be forwarded from user message",
-      );
+      // session.prompt() must NOT have been called (no injection path)
+      assert.equal(promptCalls.length, 0, "session.prompt() must not be called after eliminating injection");
+
+      // output.parts must have been populated with bootstrap content
+      const syntheticParts = output.parts.filter(p => p.synthetic === true);
+      assert.ok(syntheticParts.length > 0, "bootstrap must append synthetic parts to output.parts");
+      const combinedText = syntheticParts.map(p => p.text ?? "").join("\n");
+      assert.match(combinedText, /<available-skills>/, "bootstrap must include available-skills block");
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
   });
 
-  test("use_skill prefers the tool context agent when session cache is stale", async () => {
+  // TODO: fix in slice 3 — post-compaction re-bootstrap via next chat.message
+  test("post-compaction re-bootstrap: next chat.message re-appends bootstrap to output.parts", async () => {
     const { SkillsPlugin } = await loadPluginModule() as any;
 
-    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-tool-context-"));
-    const skillsDir = path.join(workspace, ".opencode", "skills", "test-skill");
+    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-rebootstrap-"));
+    const skillsDir = path.join(workspace, ".opencode", "skills", "reb-skill");
     await mkdir(skillsDir, { recursive: true });
     await writeFile(
       path.join(skillsDir, "SKILL.md"),
-      ["---", "name: test-skill", "description: test skill", "---", "", "# Test"].join("\n"),
+      [
+        "---",
+        "name: reb-skill",
+        "description: a skill for re-bootstrap test",
+        "---",
+        "",
+        "# Rebootstrap Skill",
+      ].join("\n"),
       "utf8",
     );
 
-    const prompts: Array<{ path: { id: string }; body: { agent?: string; model?: { providerID: string; modelID: string } } }> = [];
+    const promptCalls: unknown[] = [];
     const client = {
       session: {
         messages: async () => ({ data: [] }),
-        prompt: async (input: typeof prompts[number]) => {
-          prompts.push(input);
+        prompt: async (...args: unknown[]) => {
+          promptCalls.push(args);
         },
       },
     };
@@ -452,24 +468,34 @@ describe("use_skill selector context", () => {
     const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
 
     try {
-      // Prime the session cache with a stale selection (e.g. the previous turn).
-      const record = (plugin as any)._touchSessionState("ctx-test");
-      record.currentAgent = "plan";
-      record.currentModel = { providerID: "openai", modelID: "gpt-4" };
-      record.setupComplete = true; // skip bootstrap injection
+      const output1 = {
+        message: { sessionID: "reb-test", role: "user" as const },
+        parts: [] as Array<{ type?: string; text?: string; synthetic?: boolean }>,
+      };
 
-      await plugin.tool.UseSkill.execute(
-        { skill: "test-skill" },
-        { sessionID: "ctx-test", messageID: "msg-1", agent: "build" },
-      );
+      // First message — bootstrap
+      await plugin["chat.message"]({}, output1);
+      const syntheticAfterFirst = output1.parts.filter(p => p.synthetic === true);
+      assert.ok(syntheticAfterFirst.length > 0, "first message must bootstrap");
 
-      assert.equal(prompts.length, 1, "use_skill should inject exactly one prompt");
-      assert.equal(prompts[0]!.body.agent, "build", "agent must come from tool context, not stale cache");
-      assert.equal(
-        prompts[0]!.body.model?.modelID,
-        "gpt-4",
-        "model falls back to cached selection when tool context lacks it",
-      );
+      // Compaction event
+      await plugin.event({ event: { type: "session.compacted", properties: { sessionID: "reb-test" } } });
+
+      // Verify setupComplete was reset
+      const record = (plugin as any)._sessionStates.get("reb-test");
+      assert.equal(record?.setupComplete, false, "setupComplete must be reset after compaction");
+
+      const output2 = {
+        message: { sessionID: "reb-test", role: "user" as const },
+        parts: [] as Array<{ type?: string; text?: string; synthetic?: boolean }>,
+      };
+
+      // Second message after compaction — must re-bootstrap
+      await plugin["chat.message"]({}, output2);
+      const syntheticAfterReboot = output2.parts.filter(p => p.synthetic === true);
+      assert.ok(syntheticAfterReboot.length > 0, "message after compaction must re-bootstrap");
+      const combinedText = syntheticAfterReboot.map(p => p.text ?? "").join("\n");
+      assert.match(combinedText, /reb-skill/, "re-bootstrap content must include skill names");
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

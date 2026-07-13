@@ -15,7 +15,7 @@ export { runBoundSkillScript, SKILL_SCRIPT_TIMEOUT_MS } from "./tools";
 export { _escapeXml, _escapeShellArg } from "./tools";
 export { applySystemTransform, applyToolDefinition, isPreferenceLayerEnabled, PREFERENCE_TOOL_IDS, NATIVE_TOOL_PREFERENCE_NOTE } from "./preference-hooks";
 export type { SkillTools } from "./tools";
-export type { SessionContext } from "./types";  
+
 
 export { matchSkillsByKeyword, formatMatchedSkillsInjection } from "./plugin";
 export { touchSessionState, evictSessionState, deleteSessionState, MAX_TRACKED_SESSIONS, SESSION_TTL_MS } from "./plugin";

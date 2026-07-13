@@ -1,12 +1,12 @@
 /**
- * RED phase: Port of packages/opencode-agent-skills-md/tests/opencode/host.test.ts
- * into root src/host.test.ts.
+ * Tests for createOpencodeSkillHost contract (after eliminating
+ * session.prompt() injection).
  *
- * These tests verify createOpencodeSkillHost contract:
- *   - injectContent -> client.session.prompt (noReply + synthetic, agent/model forwarded when known)
+ * Verifies:
  *   - readFile passthrough (filesystem-backed)
  *   - readdir passthrough (filesystem-backed)
  *   - session(id) factory returns a SkillHostSession
+ *   - client only exposes filesystem methods (injectContent/getSessionContext removed)
  */
 
 import assert from "node:assert/strict";
@@ -15,7 +15,6 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createOpencodeSkillHost } from "./host";
-import type { SessionContext } from "./types";
 
 describe("createOpencodeSkillHost", () => {
   let workspace: string;
@@ -38,88 +37,8 @@ describe("createOpencodeSkillHost", () => {
     }
   });
 
-  test("injectContent omits model/agent when no context is available", async () => {
-    const prompts: Array<{
-      path: { id: string };
-      body: {
-        noReply?: boolean;
-        model?: { providerID: string; modelID: string };
-        agent?: string;
-        parts: Array<{ type: string; text: string; synthetic?: boolean }>;
-      };
-    }> = [];
-    const stub = {
-      session: {
-        prompt: async (input: typeof prompts[number]) => {
-          prompts.push(input);
-        },
-        messages: async () => ({ data: [] }),
-      },
-    };
-    const host = createOpencodeSkillHost(stub as any, () => undefined);
-
-    await host.client.injectContent("sess-1", "hello world");
-
-    assert.equal(prompts.length, 1);
-    assert.deepEqual(prompts[0]!.path, { id: "sess-1" });
-    assert.equal(prompts[0]!.body.noReply, true);
-    assert.equal(prompts[0]!.body.model, undefined, "model must not be forwarded when context is absent");
-    assert.equal(prompts[0]!.body.agent, undefined, "agent must not be forwarded when context is absent");
-    assert.equal(prompts[0]!.body.parts[0]!.type, "text");
-    assert.equal(prompts[0]!.body.parts[0]!.text, "hello world");
-    assert.equal(prompts[0]!.body.parts[0]!.synthetic, true);
-  });
-
-  test("injectContent forwards model/agent from the callback context", async () => {
-    const prompts: any[] = [];
-    const stub = {
-      session: {
-        prompt: async (input: any) => {
-          prompts.push(input);
-        },
-        messages: async () => ({ data: [] }),
-      },
-    };
-    const context: SessionContext = {
-      agent: "build",
-      model: { providerID: "anthropic", modelID: "opus" },
-    };
-    const host = createOpencodeSkillHost(stub as any, () => context);
-
-    await host.client.injectContent("sess-2", "hello world");
-
-    assert.equal(prompts.length, 1);
-    assert.equal(prompts[0].body.agent, "build");
-    assert.deepEqual(prompts[0].body.model, { providerID: "anthropic", modelID: "opus" });
-  });
-
-  test("injectContent explicit context overrides callback context", async () => {
-    const prompts: any[] = [];
-    const stub = {
-      session: {
-        prompt: async (input: any) => {
-          prompts.push(input);
-        },
-        messages: async () => ({ data: [] }),
-      },
-    };
-    const host = createOpencodeSkillHost(stub as any, () => ({
-      agent: "plan",
-      model: { providerID: "openai", modelID: "gpt-4" },
-    }));
-
-    await host.client.injectContent("sess-3", "hello world", {
-      agent: "build",
-      model: { providerID: "anthropic", modelID: "opus" },
-    });
-
-    assert.equal(prompts.length, 1);
-    assert.equal(prompts[0].body.agent, "build");
-    assert.deepEqual(prompts[0].body.model, { providerID: "anthropic", modelID: "opus" });
-  });
-
   test("readFile reads file content from the host's filesystem", async () => {
-    const host = createOpencodeSkillHost({} as any, () => undefined);
+    const host = createOpencodeSkillHost({} as any);
 
     const content = await host.client.readFile(fixtureFile);
 
@@ -127,7 +46,7 @@ describe("createOpencodeSkillHost", () => {
   });
 
   test("readdir lists directory entries from the host's filesystem", async () => {
-    const host = createOpencodeSkillHost({} as any, () => undefined);
+    const host = createOpencodeSkillHost({} as any);
 
     const entries = (await host.client.readdir(fixtureDir)).sort();
 
@@ -135,10 +54,21 @@ describe("createOpencodeSkillHost", () => {
   });
 
   test("session(id) returns a SkillHostSession with the supplied id", () => {
-    const host = createOpencodeSkillHost({} as any, () => undefined);
+    const host = createOpencodeSkillHost({} as any);
 
     const session = host.session("sess-factory");
 
     assert.deepEqual(session, { id: "sess-factory" });
+  });
+
+  test("client exposes only filesystem methods (readFile, readdir)", () => {
+    const host = createOpencodeSkillHost({} as any);
+    const client = host.client;
+
+    assert.equal(typeof client.readFile, "function", "readFile must be a function");
+    assert.equal(typeof client.readdir, "function", "readdir must be a function");
+    // injectContent and getSessionContext were removed
+    assert.equal(typeof (client as any).injectContent, "undefined", "injectContent must not exist");
+    assert.equal(typeof (client as any).getSessionContext, "undefined", "getSessionContext must not exist");
   });
 });

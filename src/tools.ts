@@ -10,16 +10,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { OpencodeSkillHost } from "./host";
-import type { SessionContext, Skill, SkillSummary } from "./types";
+import type { Skill, SkillSummary } from "./types";
 import { discoverAllSkills, findClosestMatch, listSkillFiles, resolveSkill, searchSkills } from "./skills";
 import { debugLog } from "./utils";
 
 /** Execution context passed to skill tools by the OpenCode runtime. */
 interface SkillToolContext {
   sessionID?: string;
-  messageID?: string;
-  agent?: string;
-  abort?: AbortSignal;
 }
 
 /** Escape XML special characters to prevent wrapper breakout. */
@@ -74,7 +71,7 @@ export const createSkillTools = (
     GetAvailableSkills: GetAvailableSkillsFactory(directory),
     ReadSkillFile: ReadSkillFileFactory(directory, host),
     RunSkillScript: RunSkillScriptFactory(directory, $, scriptTimeoutMs),
-    UseSkill: UseSkillFactory(directory, host, onSkillLoaded),
+    UseSkill: UseSkillFactory(directory, onSkillLoaded),
   };
 };
 
@@ -202,7 +199,7 @@ const GetAvailableSkillsFactory = (directory: string) => {
 
 const ReadSkillFileFactory = (directory: string, host: OpencodeSkillHost) => {
   return {
-    async execute(args: { skill: string; filename: string }, ctx?: SkillToolContext) {
+    async execute(args: { skill: string; filename: string }, _ctx?: SkillToolContext) {
       const resolution = await resolveSkillOrSuggest(directory, args.skill);
       if (!resolution.ok) return resolution.message;
       const skill = resolution.skill;
@@ -225,15 +222,7 @@ ${content}
   </content>
 </skill-file>`;
 
-        const sessionID = ctx?.sessionID ?? "";
-        const cachedContext = host.client.getSessionContext(sessionID);
-        const context: SessionContext = {
-          agent: ctx?.agent ?? cachedContext?.agent,
-          model: cachedContext?.model,
-        };
-        await host.client.injectContent(sessionID, wrappedContent, context);
-
-        return `File "${args.filename}" from skill "${skill.name}" loaded.`;
+        return wrappedContent;
       } catch {
         try {
           const files = await host.client.readdir(skill.path);
@@ -299,7 +288,6 @@ const RunSkillScriptFactory = (
 
 const UseSkillFactory = (
   directory: string,
-  host: OpencodeSkillHost,
   onSkillLoaded?: OnSkillLoaded
 ) => {
   return {
@@ -307,6 +295,9 @@ const UseSkillFactory = (
       const resolution = await resolveSkillOrSuggest(directory, args.skill);
       if (!resolution.ok) return resolution.message;
       const skill = resolution.skill;
+
+      const sessionID = ctx?.sessionID ?? "";
+      onSkillLoaded?.(sessionID, skill.name);
 
       const skillFiles = await listSkillFiles(skill.path);
 
@@ -331,25 +322,7 @@ ${skill.template}
   </content>
 </skill>`;
 
-      const sessionID = ctx?.sessionID ?? "";
-      const cachedContext = host.client.getSessionContext(sessionID);
-      const context: SessionContext = {
-        agent: ctx?.agent ?? cachedContext?.agent,
-        model: cachedContext?.model,
-      };
-      await host.client.injectContent(sessionID, skillContent, context);
-
-      onSkillLoaded?.(sessionID, skill.name);
-
-      const scriptInfo = skill.scripts.length > 0
-        ? `\nAvailable scripts: ${skill.scripts.map(s => s.relativePath).join(', ')}`
-        : '';
-
-      const filesInfo = skillFiles.length > 0
-        ? `\nAvailable files: ${skillFiles.join(', ')}`
-        : '';
-
-      return `Skill "${skill.name}" loaded.${scriptInfo}${filesInfo}`;
+      return skillContent;
     }
   };
 };

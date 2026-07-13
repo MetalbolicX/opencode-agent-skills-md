@@ -45,18 +45,7 @@ export interface DiscoveryPath {
   maxDepth: number;
 }
 
-/**
- * The agent/model context for a session — carried through injection calls
- * to prevent synthetic noReply messages from shadowing the user's selection.
- */
-export interface SessionContext {
-  agent?: string;
-  model?: { providerID: string; modelID: string };
-}
-
 export interface SkillHostClient {
-  injectContent(sessionID: string, text: string, context?: SessionContext): Promise<void>;
-  getSessionContext(sessionID: string): SessionContext | undefined;
   readFile(path: string): Promise<string>;
   readdir(path: string): Promise<string[]>;
 }
