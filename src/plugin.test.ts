@@ -249,13 +249,14 @@ describe("plan 012: discovery is not called twice in one turn", () => {
  * Phase 3 (task 3.1) once the plugin is wired with real discovery and injection.
  *
  * Phase 3 integration tests:
- *   ✓ createSkillTools forwards onSkillLoaded so UseSkill invokes it
  *   ✓ plugin updates loadedSkillsPerSession so a repeat chat.message does not re-inject
-   *   ✓ skill still loads when no callback is registered
  *   ✓ two plugin instances do not share session state
  *   ✓ first-message bootstrap and subsequent keyword match are both preserved
  *   ✓ chat.message discovers skills exactly once per handler invocation
  *     (requires Bun mock.method — deferred)
+ *
+ * Note: native OpenCode `skill` tool handles skill loading; the plugin no
+ * longer registers its own `skill` tool.
  */
 
 /**

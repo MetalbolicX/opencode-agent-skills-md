@@ -11,7 +11,6 @@ import { describe, test } from "node:test";
 import { resolveSafeSkillFilePath } from "./tools/read-skill-file";
 import type { Skill, SkillStore } from "./types";
 import { createSkillTools } from "./tools/index";
-import { createSessionTracker } from "./session-tracker";
 import { createMockToolContext } from "./test-helpers";
 
 // ---------------------------------------------------------------------------
@@ -99,8 +98,7 @@ describe("resolveSafeSkillFilePath", () => {
 describe("read_skill_file traversal error message", () => {
   test("returns clear traversal rejection message", async () => {
     const store = createMockSkillStore([FIXTURE_SKILL]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.read_skill_file.execute(
       { skill: "test-skill", filename: "../../../etc/passwd" },
@@ -112,8 +110,7 @@ describe("read_skill_file traversal error message", () => {
 
   test("alignment: error message mentions 'path' not 'file' for consistency", async () => {
     const store = createMockSkillStore([FIXTURE_SKILL]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.read_skill_file.execute(
       { skill: "test-skill", filename: "../../../etc/passwd" },

@@ -8,7 +8,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createSkillTools } from "./tools/index";
-import { createSessionTracker } from "./session-tracker";
 import { _escapeXml, _escapeShellArg } from "./tools/shared";
 import { createMockToolContext } from "./test-helpers";
 import type { Skill, SkillStore } from "./types";
@@ -121,8 +120,7 @@ describe("escapeShellArg", () => {
 describe("get_available_skills listing format", () => {
   test("lists skill with trigger using format: name (label)\\n  description\\n  trigger: <text>", async () => {
     const store = createMockSkillStore([FIXTURE_SKILL]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.get_available_skills.execute(
       { query: "" },
@@ -136,8 +134,7 @@ describe("get_available_skills listing format", () => {
 
   test("lists skill without trigger using format: name (label)\\n  description", async () => {
     const store = createMockSkillStore([FIXTURE_SKILL_NO_TRIGGER]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.get_available_skills.execute(
       { query: "" },
@@ -151,8 +148,7 @@ describe("get_available_skills listing format", () => {
 
   test("returns bare not-found message for query with no close match", async () => {
     const store = createMockSkillStore([FIXTURE_SKILL]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.get_available_skills.execute(
       { query: "xyzzy-abcd" },
@@ -164,8 +160,7 @@ describe("get_available_skills listing format", () => {
 
   test("returns empty message when store returns no skills", async () => {
     const store = createMockSkillStore([]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell: dummyShell });
+    const tools = createSkillTools({ store, shell: dummyShell });
 
     const result = await tools.get_available_skills.execute(
       { query: "" },

@@ -249,16 +249,12 @@ ${skillsNamespaceBlock}
     appendSyntheticText(output, injectionText);
   };
 
-  // Phase 5: createSkillTools with new signature ({ store, tracker, shell, onSkillLoaded })
+  // Phase 5: createSkillTools with new signature ({ store, shell })
+  // Skill loading itself is handled by OpenCode's native `skill` tool, so
+  // the plugin no longer needs a per-tool tracker or onSkillLoaded callback.
   const tools = createSkillTools({
     store,
-    tracker: createSessionTracker(), // Per-tool tracker (not used for session state)
     shell: $ as Parameters<typeof createSkillTools>[0]["shell"],
-    onSkillLoaded: (sessionID: string, skillName: string) => {
-      const tracker = getOrCreateTracker(sessionID);
-      tracker.markLoaded(skillName);
-      tracker.markUnpending(skillName);
-    },
   });
 
   return {

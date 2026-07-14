@@ -10,7 +10,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { createSkillTools } from "./tools/index";
-import { createSessionTracker } from "./session-tracker";
 import { createMockToolContext } from "./test-helpers";
 import type { Skill, SkillStore } from "./types";
 
@@ -115,8 +114,7 @@ describe("run_skill_script cwd isolation", () => {
     // subsequent command runs in whatever cwd was previously set.
     const { shell, calls } = createShellRecorder();
     const store = createMockSkillStore([FIXTURE_SKILL_A, FIXTURE_SKILL_B]);
-    const tracker = createSessionTracker();
-    const tools = createSkillTools({ store, tracker, shell });
+    const tools = createSkillTools({ store, shell });
 
     // Simulate what the buggy code does: call cwd but discard return
     // Then call template on shell (which still has empty/default cwd)
@@ -139,7 +137,6 @@ describe("run_skill_script cwd isolation", () => {
   test("each concurrent run_skill_script invocation uses its own skill's directory", async () => {
     // Simulate two concurrent skill invocations
     const store = createMockSkillStore([FIXTURE_SKILL_A, FIXTURE_SKILL_B]);
-    const tracker = createSessionTracker();
 
     // Create two separate shell recorders to simulate two tool instances
     const shellA = createShellRecorder().shell;
@@ -147,12 +144,10 @@ describe("run_skill_script cwd isolation", () => {
 
     const toolsA = createSkillTools({
       store,
-      tracker,
       shell: shellA as any,
     });
     const toolsB = createSkillTools({
       store,
-      tracker,
       shell: shellB as any,
     });
 
