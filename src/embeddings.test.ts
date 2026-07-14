@@ -240,6 +240,84 @@ describe("cosineSimilarity", () => {
   });
 });
 
+describe("scoreSkill generic — B2 accepts Pick<Skill, 'name'|'description'|'trigger'|'tags'>", () => {
+  test("scoreSkill accepts an object with only name, description, trigger, and tags fields", async () => {
+    const { scoreSkill } = await import("./search");
+    // Minimal shape — no path, relativePath, namespace, label, scripts, template
+    const minimalSkill = {
+      name: "brainstorming",
+      description: "helps with creative thinking",
+      trigger: "brainstorm",
+      tags: ["creative", "ideation"],
+    };
+    const tokens = ["brain"];
+    // Should not throw — scoreSkill must accept the narrowed shape
+    const score = scoreSkill(minimalSkill as Parameters<typeof scoreSkill>[0], tokens);
+    assert.ok(typeof score === "number", `expected number score, got ${typeof score}`);
+    assert.ok(score > 0, `expected positive score for name match, got ${score}`);
+  });
+
+  test("scoreSkill returns higher score for exact name match vs description-only match", async () => {
+    const { scoreSkill } = await import("./search");
+    const exactNameMatch = {
+      name: "refactor",
+      description: "unrelated content",
+      trigger: undefined,
+      tags: [],
+    };
+    const descOnlyMatch = {
+      name: "unrelated",
+      description: "refactor refactor refactor",
+      trigger: undefined,
+      tags: [],
+    };
+    const tokens = ["refactor"];
+    const exactScore = scoreSkill(exactNameMatch as Parameters<typeof scoreSkill>[0], tokens);
+    const descScore = scoreSkill(descOnlyMatch as Parameters<typeof scoreSkill>[0], tokens);
+    assert.ok(exactScore > descScore, `exact name match (${exactScore}) should outrank desc-only (${descScore})`);
+  });
+
+  test("scoreSkill works with Pick<Skill, 'name'|'description'|'trigger'|'tags'> shape (generic parameter)", async () => {
+    const { scoreSkill } = await import("./search");
+    // Explicitly using only the required fields — this is the ScoredSkillLike shape
+    const pickSkill: Pick<import("./types").Skill, "name" | "description" | "trigger" | "tags"> = {
+      name: "git-helper",
+      description: "git workflow assistance",
+      trigger: "git",
+      tags: ["git", "vcs"],
+    };
+    const tokens = ["git"];
+    const score = scoreSkill(pickSkill, tokens);
+    assert.ok(score > 0, `expected positive score for trigger match, got ${score}`);
+  });
+
+  test("scoreSkill works with empty tags array on minimal shape", async () => {
+    const { scoreSkill } = await import("./search");
+    const noTagsSkill = {
+      name: "test-skill",
+      description: "a test skill description",
+      trigger: undefined,
+      tags: [],
+    };
+    const tokens = ["test"];
+    const score = scoreSkill(noTagsSkill as Parameters<typeof scoreSkill>[0], tokens);
+    assert.ok(score > 0, `expected positive score for name prefix match, got ${score}`);
+  });
+
+  test("scoreSkill works with undefined trigger on minimal shape", async () => {
+    const { scoreSkill } = await import("./search");
+    const noTriggerSkill = {
+      name: "code-helper",
+      description: "helps with code",
+      trigger: undefined,
+      tags: [],
+    };
+    const tokens = ["code"];
+    const score = scoreSkill(noTriggerSkill as Parameters<typeof scoreSkill>[0], tokens);
+    assert.ok(score > 0, `expected positive score for name match, got ${score}`);
+  });
+});
+
 describe("matchSkills — parity shim", () => {
   test("matchSkills returns the same set of skill names as createMatcher().match()", async () => {
     const { matchSkills, createMatcher } = await import("./embeddings");

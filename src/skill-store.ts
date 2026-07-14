@@ -16,6 +16,9 @@ const DEFAULT_CACHE_TTL_MS = 5 * 1000; // 5 seconds
 interface CacheEntry {
   skills: Map<string, Skill>;
   timestamp: number;
+  inflight: Promise<Map<string, Skill>> | null; // A3: dedup concurrent calls
+  listFiles: Map<string, string[]>;             // C3b: cached file listings
+  summaries: SkillSummary[];                     // C4: cached summaries
 }
 
 /**
@@ -37,10 +40,42 @@ export const createSkillStore = (
 
   const ensureCache = async (): Promise<Map<string, Skill>> => {
     if (!cache || isExpired()) {
+      if (cache?.inflight) {
+        // A3: another call is already scanning — wait for it instead of starting a new scan
+        debugLog("[skill-store] cache miss — waiting for in-flight scan");
+        return cache.inflight;
+      }
       debugLog("[skill-store] cache miss — scanning discovery roots");
       // Pass roots only if non-empty; otherwise discoverAllSkills uses its default roots
-      const skillsByName = await discoverAllSkills(directory, roots.length > 0 ? roots : undefined);
-      cache = { skills: skillsByName, timestamp: Date.now() };
+      let resolveInflight: (v: Map<string, Skill>) => void;
+      let rejectInflight: (e: Error) => void;
+      const inflight = new Promise<Map<string, Skill>>((resolve, reject) => {
+        resolveInflight = resolve;
+        rejectInflight = reject;
+      });
+      // Store the inflight promise BEFORE awaiting so concurrent callers see it
+      if (cache) {
+        cache.inflight = inflight;
+      } else {
+        cache = {
+          skills: new Map(),
+          timestamp: 0,
+          inflight,
+          listFiles: new Map(),
+          summaries: [],
+        };
+      }
+      try {
+        const skillsByName = await discoverAllSkills(directory, roots.length > 0 ? roots : undefined);
+        cache.skills = skillsByName;
+        cache.timestamp = Date.now();
+        resolveInflight!(skillsByName);
+      } catch (err) {
+        rejectInflight!(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        // A3: clear in-flight so next cache-miss triggers a fresh scan
+        cache.inflight = null;
+      }
     }
     return cache.skills;
   };
@@ -52,12 +87,18 @@ export const createSkillStore = (
     },
 
     async summaries(): Promise<SkillSummary[]> {
+      // C4: return cached summaries if available
+      if (cache?.summaries.length && !isExpired()) {
+        return cache.summaries;
+      }
       const m = await ensureCache();
-      return Array.from(m.values()).map((s) => ({
+      const summaries = Array.from(m.values()).map((s) => ({
         name: s.name,
         description: s.description,
         trigger: s.trigger,
       }));
+      if (cache) cache.summaries = summaries;
+      return summaries;
     },
 
     async search(query: string, keywords?: string[]): Promise<Skill[]> {
@@ -101,12 +142,18 @@ export const createSkillStore = (
     },
 
     async listFiles(skillName: string): Promise<string[]> {
+      // C3b: return cached listFiles if available (same TTL as discovery cache)
+      if (cache?.listFiles.has(skillName) && !isExpired()) {
+        return cache.listFiles.get(skillName)!;
+      }
       const m = await ensureCache();
       const skill = m.get(skillName);
       if (!skill) {
         throw new Error(`Skill '${skillName}' not found`);
       }
-      return listSkillFiles(skill.path);
+      const files = await listSkillFiles(skill.path);
+      if (cache) cache.listFiles.set(skillName, files);
+      return files;
     },
 
     invalidate(): void {

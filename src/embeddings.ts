@@ -44,6 +44,8 @@ export const cosineSimilarity = (a: number[], b: number[]): number => {
 
 /**
  * Build a Skill-like shape for scoring (scoreSkill works on name/description/trigger).
+ * The `tags` field is intentionally seeded with an empty array because
+ * `scoreSkill` does not use tags for scoring — only name, description, and trigger.
  */
 interface ScorableSkill {
   name: string;
@@ -52,6 +54,7 @@ interface ScorableSkill {
   tags: string[];
 }
 
+/** Adapt a SkillSummary (name + description + trigger) to the ScorableSkill shape. */
 const toScorable = (s: SkillSummary): ScorableSkill => ({
   name: s.name,
   description: s.description,
@@ -83,7 +86,14 @@ const simpleHash = (str: string): number => {
 };
 
 /**
- * Semantic ranking using keyword scoring + bag-of-words embeddings.
+ * Semantic ranking: keyword scoring (primary) + bag-of-words cosine-similarity boost.
+ *
+ * Scoring formula: `score = keywordScore + semanticBoost * 10`
+ * - keywordScore: max(per-token) + 0.1 * sum(per-token) from `scoreSkill`
+ * - semanticBoost: 0–1 cosine similarity between query BoW and (name+desc+trigger) BoW
+ *
+ * The keyword score dominates; semantic boost is a small additive bonus.
+ * Results are capped at top-5 and only returned if score > 0.
  */
 const rankSkills = async (
   query: string,
@@ -96,7 +106,7 @@ const rankSkills = async (
 
   // Score each skill using keyword scoring as primary + semantic boost
   const scored = skills.map((skill) => {
-    const keywordScore = scoreSkill(toScorable(skill) as Skill, tokens);
+    const keywordScore = scoreSkill(toScorable(skill), tokens);
 
     const combined = `${skill.name} ${skill.description} ${skill.trigger ?? ""}`.trim();
     const bowEmbedding = computeEmbeddingPlaceholder(combined);
