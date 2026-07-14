@@ -20,8 +20,8 @@ export { applySystemTransform, applyToolDefinition, isPreferenceLayerEnabled, PR
 // Plugin helpers (keyword matching, session state)
 export { matchSkillsByKeyword } from "./match";
 export { formatMatchedSkillsInjection } from "./preference";
-export { touchSessionState, evictSessionState, deleteSessionState, MAX_TRACKED_SESSIONS, SESSION_TTL_MS } from "./plugin";
-export type { SessionState } from "./plugin";
+export { touchSessionState, evictSessionState, deleteSessionState, MAX_TRACKED_SESSIONS, SESSION_TTL_MS } from "./plugin-helpers";
+export type { SessionState } from "./plugin-helpers";
 
 // Embeddings matcher
 export { createMatcher } from "./embeddings";

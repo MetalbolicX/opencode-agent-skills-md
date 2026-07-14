@@ -1,6 +1,5 @@
 /**
- * RED phase: Port of packages/opencode-agent-skills-md/tests/opencode/preference-hooks.test.ts
- * into root src/preference-hooks.test.ts.
+ * Tests for preference-hooks module.
  *
  * These tests verify the preference-layer hooks:
  *   - applySystemTransform pushes the <skill-preference-policy> block to output.system

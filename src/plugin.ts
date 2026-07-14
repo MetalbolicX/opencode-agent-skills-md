@@ -5,6 +5,7 @@
  *
  * Uses one SkillStore per plugin instance and one SessionTracker per session.
  * All domain logic (matching, formatting) is delegated to leaf modules.
+ * Stateless helpers are in plugin-helpers.ts (C8).
  */
 
 import type { SkillSummary } from "./types";
@@ -20,89 +21,47 @@ import {
 } from "./preference-hooks";
 import { createMatcher, type Matcher } from "./embeddings";
 import type { SessionTracker } from "./types";
+import {
+  touchSessionState,
+  evictSessionState,
+  deleteSessionState,
+  isChatTextPart,
+  appendSyntheticText,
+  type SessionState,
+  MAX_TRACKED_SESSIONS,
+  SESSION_TTL_MS,
+  type ChatMessageOutput,
+} from "./plugin-helpers";
+
+/**
+ * Re-exported from plugin-helpers.ts for the plugin's public API surface.
+ * Type guard for OpenCode TextPart shape — used in `isFirstMessageSetup`
+ * to detect whether a message part contains human-authored text.
+ */
+export { isChatTextPart };
 
 export { debugLog } from "./log";
 
-export const MAX_TRACKED_SESSIONS = 100;
-export const SESSION_TTL_MS = 30 * 60 * 1000;
-
-export interface SessionState {
-  setupComplete: boolean;
-  loadedSkills: Set<string>;
-  pendingSkills: Set<string>;
-  injectedSummaries: Set<string>;
-  lastTouchedAt: number;
+/**
+ * B4: Named interface for the minimal OpenCode client shape used in plugin hooks.
+ *
+ * This interface captures only the `session.messages` field that the plugin
+ * reads inside `isFirstMessageSetup` to detect whether a bootstrap block has
+ * already been injected into the session history. Any client that provides
+ * this minimal shape is compatible — no full OpenCode client type is needed.
+ *
+ * Removes the inline cast that was previously spread across `isFirstMessageSetup`.
+ */
+export interface OpencodeClientLike {
+  session?: {
+    messages?: (input: { path: { id: string } }) => Promise<{
+      data: Array<{ parts?: unknown; info?: { parts?: unknown } }>;
+    }>;
+  };
 }
 
-export const touchSessionState = (
-  state: Map<string, SessionState>,
-  sessionID: string,
-  now: number,
-): SessionState => {
-  evictSessionState(state, now);
-  const existing = state.get(sessionID);
-  if (existing) {
-    existing.lastTouchedAt = now;
-    return existing;
-  }
-  const fresh: SessionState = {
-    setupComplete: false,
-    loadedSkills: new Set(),
-    pendingSkills: new Set(),
-    injectedSummaries: new Set(),
-    lastTouchedAt: now,
-  };
-  state.set(sessionID, fresh);
-  return fresh;
-};
-
-export const evictSessionState = (
-  state: Map<string, SessionState>,
-  now: number,
-): string[] => {
-  const evicted: string[] = [];
-  for (const [id, record] of state) {
-    if (now - record.lastTouchedAt > SESSION_TTL_MS) {
-      evicted.push(id);
-    }
-  }
-  for (const id of evicted) {
-    state.delete(id);
-  }
-  if (state.size >= MAX_TRACKED_SESSIONS) {
-    const sorted = Array.from(state.entries()).sort(
-      (a, b) => a[1].lastTouchedAt - b[1].lastTouchedAt,
-    );
-    const excess = state.size - (MAX_TRACKED_SESSIONS - 1);
-    for (let i = 0; i < excess; i++) {
-      const entry = sorted[i];
-      if (entry) {
-        const [id] = entry;
-        state.delete(id);
-        evicted.push(id);
-      }
-    }
-  }
-  return evicted;
-};
-
-export const deleteSessionState = (
-  state: Map<string, SessionState>,
-  sessionID: string,
-): boolean => {
-  return state.delete(sessionID);
-};
-
-// Type for the chat.message output shape we handle
-interface ChatMessageOutput {
-  message?: {
-    sessionID?: string;
-    role?: string;
-    model?: { providerID: string; modelID: string };
-    agent?: string;
-  };
-  parts?: Array<{ type?: string; text?: string; synthetic?: boolean }>;
-}
+export { MAX_TRACKED_SESSIONS, SESSION_TTL_MS };
+export type { SessionState };
 
 // Type for event shape
 interface EventPayload {
@@ -170,13 +129,7 @@ export const SkillsPlugin: PluginFactory = async ({
     const tracker = getOrCreateTracker(sessionID);
     if (tracker.isSetupComplete()) return false;
     try {
-      const typedClient = client as {
-        session?: {
-          messages?: (input: { path: { id: string } }) => Promise<{
-            data: Array<{ parts?: unknown; info?: { parts?: unknown } }>;
-          }>;
-        };
-      };
+      const typedClient = client as OpencodeClientLike;
       if (typedClient.session?.messages) {
         const existing = await typedClient.session.messages({
           path: { id: sessionID },
@@ -442,27 +395,12 @@ ${skillsNamespaceBlock}
         );
         return;
       }
+      // B3: Safe init — ensure system is always an array rather than casting away optionality
+      rawOutput.system = rawOutput.system ?? [];
       const summaries = await store.summaries();
       applySystemTransform(summaries, rawOutput);
     },
   };
 };
 
-/**
- * Append a synthetic text part to the chat.message output.
- * Synthetic parts are invisible to keyword matching and are not re-injected
- * after compaction — the next bootstrap recomputes them from scratch.
- */
-const appendSyntheticText = (
-  output: ChatMessageOutput,
-  text: string,
-): void => {
-  output.parts ??= [];
-  output.parts.push({ type: "text", text, synthetic: true });
-};
 
-// Type guard for chat text part — exported for unit testing
-export function isChatTextPart(part: unknown): part is { type?: string; text?: string; synthetic?: boolean } {
-  if (typeof part !== "object" || part === null) return false;
-  return (part as { type?: string }).type === "text";
-}

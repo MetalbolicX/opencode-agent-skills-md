@@ -29,8 +29,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "clean": "rm -rf dist",
-    "install-local": "mkdir -p .opencode/plugins && echo 'export { SkillsPlugin } from \"./src/plugin.ts\";' > .opencode/plugins/skills.js",
-    "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed",
+    "install-local": "mkdir -p .opencode/plugins && printf 'import { SkillsPlugin } from \"../../src/plugin.ts\";\\nexport default { id: \"opencode-agent-skills-md\", server: SkillsPlugin };\\n' > .opencode/plugins/skills.ts",
+    "status": "ls -la .opencode/plugins/skills.ts 2>/dev/null || echo Not installed",
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {

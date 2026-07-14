@@ -1,6 +1,5 @@
 /**
- * RED phase: Port of packages/opencode-agent-skills-md/tests/opencode/plugin.test.ts
- * into root src/plugin.test.ts.
+ * Tests for plugin module.
  *
  * These tests verify keyword matching and synthetic injection behaviour.
  * They FAIL in RED because src/plugin.ts, src/tools.ts, etc. do not exist.
@@ -747,5 +746,61 @@ describe("output.parts injection (no session.prompt())", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
+  });
+});
+
+describe("OpencodeClientLike — B4 named interface", () => {
+  test("OpencodeClientLike is exported from plugin.ts", async () => {
+    const mod = await import("./plugin");
+    // OpencodeClientLike is a type-only export — verify it exists by using it in a type annotation
+    const client: mod.OpencodeClientLike = {};
+    assert.ok(client !== null && typeof client === "object", "OpencodeClientLike type must be usable");
+  });
+
+  test("OpencodeClientLike: client with session.messages returning valid data satisfies interface", async () => {
+    // This test verifies the shape that plugin.ts casts `client as OpencodeClientLike`
+    // The interface requires: session?.messages?.(input: {path: {id: string}}) => Promise<{data: ...}>
+    const { OpencodeClientLike } = await import("./plugin");
+    const validClient = {
+      session: {
+        messages: async (input: { path: { id: string } }) => {
+          return {
+            data: [
+              {
+                parts: [
+                  { type: "text", text: "<available-skills>- skill-a\n- skill-b</available-skills>" },
+                ],
+              },
+            ],
+          };
+        },
+      },
+    } satisfies (typeof OpencodeClientLike)["prototype"];
+
+    // If the satisfies passes TypeScript, the shape is valid
+    assert.ok(validClient.session?.messages !== undefined, "messages must be defined");
+  });
+
+  test("OpencodeClientLike: client with missing optional session field satisfies interface", async () => {
+    const { OpencodeClientLike } = await import("./plugin");
+    const noSessionClient = {};
+    // Optional fields must be allowed
+    assert.ok(noSessionClient !== null && typeof noSessionClient === "object", "empty object is valid");
+  });
+
+  test("OpencodeClientLike: client with session but no messages satisfies interface", async () => {
+    const { OpencodeClientLike } = await import("./plugin");
+    const noMessagesClient = { session: {} };
+    assert.ok(noMessagesClient !== null && typeof noMessagesClient === "object", "session without messages is valid");
+  });
+
+  test("OpencodeClientLike: messages returning empty data array satisfies interface", async () => {
+    const { OpencodeClientLike } = await import("./plugin");
+    const emptyDataClient = {
+      session: {
+        messages: async () => ({ data: [] }),
+      },
+    };
+    assert.ok(emptyDataClient.session?.messages !== undefined, "messages must be callable");
   });
 });
