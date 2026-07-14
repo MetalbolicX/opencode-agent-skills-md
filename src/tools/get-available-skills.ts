@@ -5,6 +5,7 @@
 import type { Skill, SkillToolContext } from "../types";
 import { findClosestMatch } from "../match";
 import { searchSkills } from "../search";
+import { tool } from "@opencode-ai/plugin";
 
 export interface GetAvailableSkillsDeps {
   store: {
@@ -13,7 +14,12 @@ export interface GetAvailableSkillsDeps {
 }
 
 export const createGetAvailableSkills = (deps: GetAvailableSkillsDeps) => {
-  return {
+  return tool({
+    description: "Search, filter, and summarize available skills.",
+    args: {
+      query: tool.schema.string().optional(),
+      keywords: tool.schema.array(tool.schema.string()).optional(),
+    },
     async execute(args: { query?: string; keywords?: string[] }, _ctx?: SkillToolContext) {
       const { store } = deps;
       const allSkills = await store.all();
@@ -40,5 +46,5 @@ export const createGetAvailableSkills = (deps: GetAvailableSkillsDeps) => {
         })
         .join("\n\n");
     },
-  };
+  });
 };

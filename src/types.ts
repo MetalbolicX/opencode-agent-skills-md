@@ -68,6 +68,7 @@ export interface SessionTracker {
   readonly pendingSkills: ReadonlySet<string>;
   readonly injectedSummaries: ReadonlySet<string>;
   readonly lastTouchedAt: number;
+  readonly ttlMs: number;
   touch(): void;
   markLoaded(name: string): void;
   markPending(name: string): void;
@@ -76,6 +77,8 @@ export interface SessionTracker {
   clear(): void;
   isSetupComplete(): boolean;
   markSetupComplete(): void;
+  /** Returns true if the session has exceeded its TTL since lastTouchedAt. */
+  isStale(now?: number): boolean;
 }
 
 /** Result of a skill resolution attempt. */

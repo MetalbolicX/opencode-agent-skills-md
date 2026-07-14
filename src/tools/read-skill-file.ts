@@ -8,6 +8,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Skill, SkillToolContext } from "../types";
 import { _escapeXml } from "./shared";
+import { tool } from "@opencode-ai/plugin";
 
 export interface ReadSkillFileDeps {
   store: {
@@ -37,7 +38,12 @@ export const resolveSafeSkillFilePath = async (
 };
 
 export const createReadSkillFile = (deps: ReadSkillFileDeps) => {
-  return {
+  return tool({
+    description: "Read a file from a skill directory, safely constrained to that skill.",
+    args: {
+      skill: tool.schema.string(),
+      filename: tool.schema.string(),
+    },
     async execute(args: { skill: string; filename: string }, _ctx?: SkillToolContext) {
       const { store } = deps;
 
@@ -80,5 +86,5 @@ ${content}
         }
       }
     },
-  };
+  });
 };
