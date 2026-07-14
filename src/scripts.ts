@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Script } from "./types";
-import { walkDir } from "./utils";
+import { walkDir } from "./fs-walk";
 
 const SCRIPT_SKIP_DIRS: ReadonlySet<string> = new Set([
   '__pycache__',

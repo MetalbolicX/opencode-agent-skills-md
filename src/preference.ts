@@ -5,7 +5,7 @@
  * No host dependencies.
  */
 
-import type { SkillSummary } from "./types";
+import type { Skill, SkillSummary } from "./types";
 
 const SKILL_FIRST_POLICY =
   "Prefer the use_skill tool over native tools (read, write, edit, bash, " +
@@ -55,4 +55,59 @@ ${directives}
 export const isPreferenceModeEnabled = (raw?: string): boolean => {
   if (raw === undefined || raw === null || raw === "") return true;
   return raw !== "off";
+};
+
+/**
+ * Format a list of skills as the inner bullet block used inside the
+ * `<available-skills>` synthetic injection.
+ * Omits `trigger` — trigger text only appears in targeted outputs.
+ */
+export const formatSkillListing = (skills: Skill[]): string => {
+  return skills
+    .map((s) => `- ${s.name}: ${s.description}`)
+    .join("\n");
+};
+
+/**
+ * Render the full `<available-skills>...</available-skills>` block that the
+ * host injects into a session on startup and after compaction.
+ */
+export const renderAvailableSkillsBlock = (skills: Skill[]): string => {
+  const skillsList = formatSkillListing(skills);
+  return `<available-skills>
+Use the use_skill, read_skill_file, run_skill_script, and get_available_skills tools to work with skills.
+
+${skillsList}
+</available-skills>`;
+};
+
+/**
+ * Render the matched-skill synthetic injection block.
+ */
+export const formatMatchedSkillsInjection = (
+  matchedSkills: SkillSummary[]
+): string => {
+  const skillLines = matchedSkills
+    .map((s) => {
+      const head = `- ${s.name}: ${s.description}`;
+      const trigger = s.trigger && s.trigger.length > 0
+        ? `\n  trigger: ${s.trigger}`
+        : "";
+      return head + trigger;
+    })
+    .join("\n");
+
+  return `<skill-evaluation-required>
+SKILL EVALUATION PROCESS
+
+The following skills may be relevant to your request:
+
+${skillLines}
+
+Step 1 - EVALUATE: Determine if these skills would genuinely help
+Step 2 - DECIDE: Choose which skills (if any) are actually needed
+Step 3 - ACTIVATE: Call use_skill("name") for each chosen skill
+
+IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. Do NOT announce your decision. Simply activate relevant skills or proceed directly with the request.
+</skill-evaluation-required>`;
 };
