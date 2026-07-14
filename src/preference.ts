@@ -8,14 +8,14 @@
 import type { Skill, SkillSummary } from "./types";
 
 const SKILL_FIRST_POLICY =
-  "Prefer the use_skill tool over native tools (read, write, edit, bash, " +
+  "Prefer the skill tool over native tools (read, write, edit, bash, " +
   "task, glob, grep, webfetch) whenever a matching skill is listed below. " +
-  "Call use_skill(\"<name>\") to load the full skill instructions before " +
+  "Call skill(\"<name>\") to load the full skill instructions before " +
   "using native tools.";
 
 const NATIVE_TOOLS_NOTE =
   "Before using this tool, check whether a listed skill matches the task. " +
-  "If one does, call use_skill(\"<name>\") first.";
+  "If one does, call skill(\"<name>\") first.";
 
 const formatSkillCatalog = (summaries: SkillSummary[]): string => {
   return summaries.map((s) => `- ${s.name}: ${s.description}`).join("\n");
@@ -42,11 +42,11 @@ export const renderSkillPreflightBlock = (
   if (summaries.length === 0) return "";
 
   const directives = summaries
-    .map((s) => `- use_skill("${s.name}")`)
+    .map((s) => `- skill("${s.name}")`)
     .join("\n");
 
   return `<skill-preflight>
-The following skills match this turn. Call use_skill before any native tool:
+The following skills match this turn. Call skill before any native tool:
 
 ${directives}
 </skill-preflight>`;
@@ -75,7 +75,7 @@ export const formatSkillListing = (skills: Skill[]): string => {
 export const renderAvailableSkillsBlock = (skills: Skill[]): string => {
   const skillsList = formatSkillListing(skills);
   return `<available-skills>
-Use the use_skill, read_skill_file, run_skill_script, and get_available_skills tools to work with skills.
+Use the skill, read_skill_file, run_skill_script, and get_available_skills tools to work with skills.
 
 ${skillsList}
 </available-skills>`;
@@ -106,7 +106,7 @@ ${skillLines}
 
 Step 1 - EVALUATE: Determine if these skills would genuinely help
 Step 2 - DECIDE: Choose which skills (if any) are actually needed
-Step 3 - ACTIVATE: Call use_skill("name") for each chosen skill
+Step 3 - ACTIVATE: Call skill("name") for each chosen skill
 
 IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. Do NOT announce your decision. Simply activate relevant skills or proceed directly with the request.
 </skill-evaluation-required>`;

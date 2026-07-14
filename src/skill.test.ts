@@ -1,10 +1,9 @@
 /**
- * Tests for use_skill tool.
+ * Tests for skill tool.
  *
  * Tests:
- *   - Template injection isolation: text containing </content> cannot break the wrapper
- *   - CDATA wrapping prevents XML-in-Markdown issues
- *   - Error message alignment with read_skill_file
+ *   - Output matches native OpenCode `<skill_content>` format
+ *   - Not-found error message alignment with read_skill_file
  */
 
 import assert from "node:assert/strict";
@@ -12,6 +11,7 @@ import { describe, test } from "node:test";
 import type { Skill, SkillStore } from "./types";
 import { createSkillTools } from "./tools/index";
 import { createSessionTracker } from "./session-tracker";
+import { createMockToolContext } from "./test-helpers";
 
 // ---------------------------------------------------------------------------
 // MockSkillStore
@@ -62,51 +62,45 @@ const FIXTURE_SKILL: Skill = {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("use_skill template injection safety", () => {
-  test("template containing </content> is safely wrapped with CDATA", async () => {
-    const skillWithInjection: Skill = {
-      ...FIXTURE_SKILL,
-      name: "injection-skill",
-      template: "# Skill\n\nSome content\n</content>\nMore content",
-    };
-    const store = createMockSkillStore([skillWithInjection]);
+describe("skill tool native format", () => {
+  test("output uses <skill_content> wrapper and includes skill header", async () => {
+    const store = createMockSkillStore([FIXTURE_SKILL]);
     const tracker = createSessionTracker();
     const tools = createSkillTools({ store, tracker, shell: dummyShell });
 
-    const result = await tools.use_skill.execute(
-      { skill: "injection-skill" },
-      { sessionID: "sess-injection" },
+    const result = await tools.skill.execute(
+      { name: "test-skill" },
+      createMockToolContext("sess-format"),
     );
 
-    // CDATA wrapping isolates the template content
-    assert.match(result, /<content><!\[CDATA\[/);
-    assert.match(result, /\]\]><\/content>/);
-    // The injection attempt (</content>) appears INSIDE the CDATA section,
-    // properly escaped from the outer <content> wrapper
-    // The outer wrapper remains intact with CDATA boundary markers
-    assert.ok(result.includes("<![CDATA["), "CDATA opening present");
-    assert.ok(result.includes("]]>"), "CDATA closing present");
-    // The template content should appear between CDATA delimiters
-    assert.match(result, /<content><!\[CDATA\[# Skill/);
+    assert.match(result, /<skill_content name="test-skill">/);
+    assert.match(result, /<\/skill_content>/);
+    assert.match(result, /# Skill: test-skill/);
+    assert.match(result, /Base directory for this skill: /);
+    assert.match(result, /<skill_files>/);
+    assert.match(result, /<\/skill_files>/);
   });
 
-  test("template containing ]]> is handled correctly (CDATA edge case)", async () => {
-    const skillWithCdataEnd: Skill = {
+  test("template with XML-like content is included raw in native format", async () => {
+    const skillWithXml: Skill = {
       ...FIXTURE_SKILL,
-      name: "cdata-end-skill",
-      template: "# Skill\n\nSome content\n]]>\nMore content",
+      name: "xml-skill",
+      template: "# Skill\n\nSome content\n</skill_content>\nMore content",
     };
-    const store = createMockSkillStore([skillWithCdataEnd]);
+    const store = createMockSkillStore([skillWithXml]);
     const tracker = createSessionTracker();
     const tools = createSkillTools({ store, tracker, shell: dummyShell });
 
-    const result = await tools.use_skill.execute(
-      { skill: "cdata-end-skill" },
-      { sessionID: "sess-cdata" },
+    const result = await tools.skill.execute(
+      { name: "xml-skill" },
+      createMockToolContext("sess-xml"),
     );
 
-    // ]]> must be escaped/replaced to avoid breaking CDATA
-    assert.match(result, /<content><!\[CDATA\[/);
+    assert.match(result, /<skill_content name="xml-skill">/);
+    assert.match(result, /<\/skill_content>/);
+    // Native format does not use CDATA; content is included directly
+    assert.ok(result.includes("Some content"), "content present");
+    assert.ok(result.includes("More content"), "trailing content present");
   });
 
   test("alignment: not-found error message format matches read_skill_file", async () => {
@@ -115,19 +109,19 @@ describe("use_skill template injection safety", () => {
     const tools = createSkillTools({ store, tracker, shell: dummyShell });
 
     // Both tools should produce similar "not found" messages
-    const resultUseSkill = await tools.use_skill.execute(
-      { skill: "nonexistent" },
-      { sessionID: "sess-notfound" },
+    const resultSkill = await tools.skill.execute(
+      { name: "nonexistent" },
+      createMockToolContext("sess-notfound"),
     );
     const resultReadSkill = await tools.read_skill_file.execute(
       { skill: "nonexistent", filename: "readme.md" },
-      {},
+      createMockToolContext("sess-notfound"),
     );
 
-    assert.match(resultUseSkill, /Skill "nonexistent" not found/);
+    assert.match(resultSkill, /Skill "nonexistent" not found/);
     assert.match(resultReadSkill, /Skill "nonexistent" not found/);
     // Both should use similar wording
-    assert.match(resultUseSkill, /not found/);
+    assert.match(resultSkill, /not found/);
     assert.match(resultReadSkill, /not found/);
   });
 });

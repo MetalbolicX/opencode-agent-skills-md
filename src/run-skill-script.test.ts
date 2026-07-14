@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { createSkillTools } from "./tools/index";
 import { createSessionTracker } from "./session-tracker";
+import { createMockToolContext } from "./test-helpers";
 import type { Skill, SkillStore } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -159,11 +160,11 @@ describe("run_skill_script cwd isolation", () => {
     await Promise.all([
       toolsA.run_skill_script.execute(
         { skill: "skill-a", script: "bin/echo.sh", arguments: ["a1", "a2"] },
-        { sessionID: "sess-a" },
+        createMockToolContext("sess-a"),
       ),
       toolsB.run_skill_script.execute(
         { skill: "skill-b", script: "bin/echo.sh", arguments: ["b1", "b2"] },
-        { sessionID: "sess-b" },
+        createMockToolContext("sess-b"),
       ),
     ]);
 

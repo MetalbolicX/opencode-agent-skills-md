@@ -12,6 +12,7 @@ import { resolveSafeSkillFilePath } from "./tools/read-skill-file";
 import type { Skill, SkillStore } from "./types";
 import { createSkillTools } from "./tools/index";
 import { createSessionTracker } from "./session-tracker";
+import { createMockToolContext } from "./test-helpers";
 
 // ---------------------------------------------------------------------------
 // MockSkillStore
@@ -103,7 +104,7 @@ describe("read_skill_file traversal error message", () => {
 
     const result = await tools.read_skill_file.execute(
       { skill: "test-skill", filename: "../../../etc/passwd" },
-      {},
+      createMockToolContext(),
     );
 
     assert.match(result, /Invalid path: cannot access files outside skill directory/);
@@ -116,10 +117,10 @@ describe("read_skill_file traversal error message", () => {
 
     const result = await tools.read_skill_file.execute(
       { skill: "test-skill", filename: "../../../etc/passwd" },
-      {},
+      createMockToolContext(),
     );
 
-    // Both use_skill and read_skill_file should use consistent "not found" / "path" wording
+    // Both skill and read_skill_file should use consistent "not found" / "path" wording
     assert.match(result, /Invalid path|cannot access/);
   });
 });

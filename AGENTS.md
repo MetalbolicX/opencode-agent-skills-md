@@ -26,7 +26,7 @@ Single-package Bun layout under `src/`:
 ## Skill Behavior
 - Discovery order is `.opencode/skills/`, `.claude/skills/`, `~/.config/opencode/skills/`, then `~/.claude/skills/`.
 - First match wins; duplicate skill names are ignored.
-- `use_skill` injects `SKILL.md` into context.
+- `skill` injects `SKILL.md` into context.
 - `read_skill_file` only reads inside the selected skill directory.
 - `run_skill_script` only runs executable files.
 - `OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true` enables the optional Superpowers bootstrap.

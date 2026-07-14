@@ -145,7 +145,7 @@ describe("applyToolDefinition", () => {
 
     assert.equal(annotated, true);
     assert.match(output.description, /^Read a file from disk\./);
-    assert.match(output.description, /use_skill/i, "note mentions use_skill");
+    assert.match(output.description, /skill/i, "note mentions skill");
     assert.ok(
       output.description.includes(NATIVE_TOOL_PREFERENCE_NOTE.trim()),
       "description includes the appended note (trimmed)",
@@ -208,7 +208,7 @@ describe("applyToolDefinition", () => {
     const annotated = applyToolDefinition(input as any, output as any);
 
     assert.equal(annotated, true);
-    assert.match(output.description ?? "", /use_skill/i, "description was initialized then annotated");
+    assert.match(output.description ?? "", /skill/i, "description was initialized then annotated");
     assert.deepEqual(output.parameters, { type: "object" });
   });
 
@@ -228,7 +228,7 @@ describe("applyToolDefinition", () => {
         fresh.description.length > "base".length,
         `${toolID} description must be longer than the original`,
       );
-      assert.match(fresh.description, /use_skill/i);
+      assert.match(fresh.description, /skill/i);
     }
   });
 });

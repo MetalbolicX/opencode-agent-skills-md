@@ -31,7 +31,7 @@ describe("renderSkillPreferenceSystemBlock", () => {
     const result = renderSkillPreferenceSystemBlock(summaries);
 
     assert.ok(result.includes("<skill-preference-policy>"));
-    assert.ok(result.includes("use_skill"));
+    assert.ok(result.includes("skill"));
     assert.ok(result.includes("git-helper"));
     assert.ok(result.includes("test-skill"));
     assert.ok(result.includes("</skill-preference-policy>"));
@@ -52,14 +52,14 @@ describe("renderSkillPreflightBlock", () => {
     assert.equal(result, "");
   });
 
-  test("contains skill-preflight tag and use_skill directives", () => {
+  test("contains skill-preflight tag and skill directives", () => {
     const summaries: SkillSummary[] = [
       { name: "git-helper", description: "Git assistance", trigger: "git" },
     ];
     const result = renderSkillPreflightBlock(summaries);
 
     assert.ok(result.includes("<skill-preflight>"));
-    assert.ok(result.includes('use_skill("git-helper")'));
+    assert.ok(result.includes('skill("git-helper")'));
     assert.ok(result.includes("</skill-preflight>"));
   });
 
@@ -69,8 +69,8 @@ describe("renderSkillPreflightBlock", () => {
       { name: "skill-b", description: "B", trigger: "" },
     ];
     const result = renderSkillPreflightBlock(summaries);
-    assert.ok(result.includes('use_skill("skill-a")'));
-    assert.ok(result.includes('use_skill("skill-b")'));
+    assert.ok(result.includes('skill("skill-a")'));
+    assert.ok(result.includes('skill("skill-b")'));
   });
 });
 
@@ -141,14 +141,14 @@ describe("renderAvailableSkillsBlock", () => {
     const result = renderAvailableSkillsBlock(skills);
 
     assert.ok(result.includes("<available-skills>"));
-    assert.ok(result.includes("use_skill"));
+    assert.ok(result.includes("skill"));
     assert.ok(result.includes("test-skill"));
     assert.ok(result.includes("</available-skills>"));
   });
 
   test("mentions all four tool names", () => {
     const result = renderAvailableSkillsBlock([]);
-    assert.ok(result.includes("use_skill"));
+    assert.ok(result.includes("skill"));
     assert.ok(result.includes("read_skill_file"));
     assert.ok(result.includes("run_skill_script"));
     assert.ok(result.includes("get_available_skills"));

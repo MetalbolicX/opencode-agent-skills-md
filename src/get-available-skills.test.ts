@@ -10,6 +10,7 @@ import { describe, test } from "node:test";
 import { createSkillTools } from "./tools/index";
 import { createSessionTracker } from "./session-tracker";
 import { _escapeXml, _escapeShellArg } from "./tools/shared";
+import { createMockToolContext } from "./test-helpers";
 import type { Skill, SkillStore } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ describe("get_available_skills listing format", () => {
 
     const result = await tools.get_available_skills.execute(
       { query: "" },
-      { sessionID: "sess-list" },
+      createMockToolContext("sess-list"),
     );
 
     assert.match(result, /^test-skill \(project\)/);
@@ -140,7 +141,7 @@ describe("get_available_skills listing format", () => {
 
     const result = await tools.get_available_skills.execute(
       { query: "" },
-      { sessionID: "sess-list" },
+      createMockToolContext("sess-list"),
     );
 
     assert.match(result, /^no-trigger-skill \(project\)/);
@@ -155,7 +156,7 @@ describe("get_available_skills listing format", () => {
 
     const result = await tools.get_available_skills.execute(
       { query: "xyzzy-abcd" },
-      { sessionID: "sess-not-found" },
+      createMockToolContext("sess-not-found"),
     );
 
     assert.equal(result, "No skills found matching your query.");
@@ -168,7 +169,7 @@ describe("get_available_skills listing format", () => {
 
     const result = await tools.get_available_skills.execute(
       { query: "" },
-      { sessionID: "sess-empty" },
+      createMockToolContext("sess-empty"),
     );
 
     assert.equal(result, "No skills found matching your query.");

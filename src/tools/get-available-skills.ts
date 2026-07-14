@@ -2,7 +2,8 @@
  * get_available_skills tool factory.
  */
 
-import type { Skill, SkillToolContext } from "../types";
+import type { Skill } from "../types";
+import type { ToolContext } from "@opencode-ai/plugin";
 import { findClosestMatch } from "../match";
 import { searchSkills } from "../search";
 import { tool } from "@opencode-ai/plugin";
@@ -20,7 +21,7 @@ export const createGetAvailableSkills = (deps: GetAvailableSkillsDeps) => {
       query: tool.schema.string().optional(),
       keywords: tool.schema.array(tool.schema.string()).optional(),
     },
-    async execute(args: { query?: string; keywords?: string[] }, _ctx?: SkillToolContext) {
+    async execute(args: { query?: string; keywords?: string[] }, _context: ToolContext) {
       const { store } = deps;
       const allSkills = await store.all();
       const matched = searchSkills(allSkills, args.query ?? "", args.keywords);

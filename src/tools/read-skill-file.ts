@@ -6,7 +6,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { Skill, SkillToolContext } from "../types";
+import type { Skill } from "../types";
+import type { ToolContext } from "@opencode-ai/plugin";
 import { _escapeXml } from "./shared";
 import { tool } from "@opencode-ai/plugin";
 
@@ -44,7 +45,7 @@ export const createReadSkillFile = (deps: ReadSkillFileDeps) => {
       skill: tool.schema.string(),
       filename: tool.schema.string(),
     },
-    async execute(args: { skill: string; filename: string }, _ctx?: SkillToolContext) {
+    async execute(args: { skill: string; filename: string }, _context: ToolContext) {
       const { store } = deps;
 
       let skill: Skill;

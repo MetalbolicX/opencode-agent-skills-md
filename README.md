@@ -121,7 +121,7 @@ Once loaded, use the tools directly from OpenCode:
 
 | Tool | Description |
 |------|-------------|
-| `use_skill` | Load a skill's `SKILL.md` into context. |
+| `skill` | Load a skill's `SKILL.md` into context. |
 | `read_skill_file` | Read a file from a skill directory (e.g., `references/rules.md`). |
 | `run_skill_script` | Execute a script from a skill directory. The script must be executable (`chmod +x`). |
 | `get_available_skills` | List available skills, optionally filtered by an ad-hoc query string. |
@@ -138,7 +138,7 @@ opencode
 ## How it Works
 
 1. **Session Initialization**: On the first message, a complete list of discovered skills is injected into the context via `<available-skills>`.
-2. **Semantic Evaluation**: For subsequent messages, user text is semantically ranked against skill names, descriptions, and triggers. The top 5 most relevant skills trigger a hidden `<skill-evaluation-required>` block prompting the agent to invoke `use_skill` if appropriate.
+2. **Semantic Evaluation**: For subsequent messages, user text is semantically ranked against skill names, descriptions, and triggers. The top 5 most relevant skills trigger a hidden `<skill-evaluation-required>` block prompting the agent to invoke `skill` if appropriate.
 3. **Synthetic Injection**: Tool outputs are injected using `synthetic: true` and `noReply: true`, meaning they do not count as user messages and remain quietly in the context window.
 4. **Script Safety**: File reads (`read_skill_file`) strictly prevent path traversal outside the skill's root directory. Scripts (`run_skill_script`) skip common heavy directories like `node_modules` and `.git` and only execute files with the executable bit set.
 
@@ -146,7 +146,7 @@ opencode
 
 Load a skill into context:
 ```
-use_skill("brainstorming")
+skill("brainstorming")
 ```
 
 Read a supporting file from a skill:

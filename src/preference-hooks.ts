@@ -27,7 +27,7 @@ export const PREFERENCE_TOOL_IDS: ReadonlySet<string> = new Set([
 
 export const NATIVE_TOOL_PREFERENCE_NOTE =
   " Before using this tool, check whether a listed skill matches the task; " +
-  "if one does, call use_skill(\"<name>\") first.";
+  "if one does, call skill(\"<name>\") first.";
 
 interface SystemTransformOutput {
   system?: string[];

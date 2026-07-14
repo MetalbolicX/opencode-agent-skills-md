@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "url";
+import type { ToolContext } from "@opencode-ai/plugin";
 
 // Resolve the fixture root relative to this file's location.
 // Fixtures live at tests/fixtures/skills/ in the single-package Bun layout.
@@ -103,6 +104,19 @@ export function createMockOpencodeClient(initialMessages: unknown[] = []): MockO
       },
     },
   };
+}
+
+export function createMockToolContext(sessionID: string = "test-session"): ToolContext {
+  return {
+    sessionID,
+    messageID: "msg_test",
+    agent: "test",
+    directory: "/test",
+    worktree: "/test",
+    abort: new AbortController().signal,
+    metadata: () => {},
+    ask: async () => {},
+  } as ToolContext;
 }
 
 export function createShellRecorder(): ShellRecorder {

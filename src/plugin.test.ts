@@ -241,7 +241,7 @@ describe("plan 012: discovery is not called twice in one turn", () => {
  *
  * The following tests verify plugin wiring, session state management, and
  * loaded-skill deduplication. They require the full SkillsPlugin implementation
- * (real chat.message bootstrap, real use_skill injection, real session tracking).
+   * (real chat.message bootstrap, real skill injection, real session tracking).
  *
  * They are moved here from plugin.test.ts to keep PR 1 fully green. The scaffold
  * correctly exposes matchSkillsByKeyword and formatMatchedSkillsInjection as
@@ -251,7 +251,7 @@ describe("plan 012: discovery is not called twice in one turn", () => {
  * Phase 3 integration tests:
  *   ✓ createSkillTools forwards onSkillLoaded so UseSkill invokes it
  *   ✓ plugin updates loadedSkillsPerSession so a repeat chat.message does not re-inject
- *   ✓ use_skill still loads when no callback is registered
+   *   ✓ skill still loads when no callback is registered
  *   ✓ two plugin instances do not share session state
  *   ✓ first-message bootstrap and subsequent keyword match are both preserved
  *   ✓ chat.message discovers skills exactly once per handler invocation
@@ -517,7 +517,7 @@ describe("Phase 5: keyword preflight parity", () => {
 
       // Keyword "auth" should trigger preflight for auth-skill
       assert.match(combinedText, /<skill-preflight>/, "preflight must include <skill-preflight> tag");
-      assert.match(combinedText, /use_skill\("auth-skill"\)/, "preflight must include skill invocation");
+      assert.match(combinedText, /skill\("auth-skill"\)/, "preflight must include skill invocation");
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

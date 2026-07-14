@@ -1,6 +1,6 @@
 ---
 name: greeting
-description: A simple greeting skill for integration testing use_skill behavior
+description: A simple greeting skill for integration testing skill tool behavior
 trigger: hello, greet, greeting, test
 ---
 

@@ -8,7 +8,7 @@
     "maxRetries": 3
   },
   "features": [
-    "use_skill",
+    "skill",
     "read_skill_file", 
     "run_skill_script",
     "find_skills"

@@ -1,6 +1,6 @@
 ---
 name: scripted-skill
-description: A scripted skill used by the test suite to exercise use_skill, read_skill_file, and run_skill_script with a known-good structure.
+description: A scripted skill used by the test suite to exercise skill, read_skill_file, and run_skill_script with a known-good structure.
 ---
 
 # scripted-skill

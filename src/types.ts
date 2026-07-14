@@ -83,10 +83,3 @@ export interface SessionTracker {
 
 /** Result of a skill resolution attempt. */
 export type SkillResolution = { ok: true; skill: Skill } | { ok: false; message: string };
-
-/** Execution context passed to skill tools by the OpenCode runtime. */
-export interface SkillToolContext {
-  sessionID?: string;
-  agent?: string;
-  abort?: AbortSignal;
-}

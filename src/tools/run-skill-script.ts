@@ -2,7 +2,8 @@
  * run_skill_script tool factory.
  */
 
-import type { Skill, SkillToolContext } from "../types";
+import type { Skill } from "../types";
+import type { ToolContext } from "@opencode-ai/plugin";
 import { _escapeShellArg, SKILL_SCRIPT_TIMEOUT_MS, runBoundSkillScript } from "./shared";
 import { tool } from "@opencode-ai/plugin";
 
@@ -33,7 +34,7 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
     },
     async execute(
       args: { skill: string; script: string; arguments?: string[] },
-      ctx?: SkillToolContext,
+      context: ToolContext,
     ) {
       const { store, shell, timeout = SKILL_SCRIPT_TIMEOUT_MS } = deps;
 
@@ -71,7 +72,7 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
         const scriptArgs = (args.arguments || []).map(_escapeShellArg).join(" ");
         const result = await runBoundSkillScript(
           shell`${script.absolutePath} ${scriptArgs}`.cwd(skill.path).text(),
-          ctx?.abort,
+          context.abort,
           timeout,
           script.absolutePath,
         );

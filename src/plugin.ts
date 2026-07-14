@@ -178,7 +178,7 @@ export const SkillsPlugin: PluginFactory = async ({
         const toolMappingBlock = `**Tool Mapping for OpenCode:**
 - \`TodoWrite\` → \`todowrite\`
 - \`Task\` tool with subagents → Use the \`task\` tool with \`subagent_type\`
-- \`Skill\` tool → \`use_skill\`
+- \`Skill\` tool → \`skill\` (same name in OpenCode)
 - \`Read\`, \`Write\`, \`Edit\`, \`Bash\`, \`Glob\`, \`Grep\`, \`WebFetch\` → Use the native lowercase OpenCode tools`;
 
         const skillsNamespaceBlock = `**Skill namespace priority:**
@@ -194,7 +194,7 @@ The first discovered match wins.`;
         const content = `<EXTREMELY_IMPORTANT>
 You have superpowers.
 
-**IMPORTANT: The using-superpowers skill content is included below. It is ALREADY LOADED - do not call use_skill for it again. Use use_skill only for OTHER skills.**
+**IMPORTANT: The using-superpowers skill content is included below. It is ALREADY LOADED - do not call skill for it again. Use skill only for OTHER skills.**
 
 ${usingSuperpowersSkill.template}
 
