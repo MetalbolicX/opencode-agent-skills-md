@@ -34,6 +34,9 @@ export const createSessionTracker = (ttlMs: number = DEFAULT_TTL_MS): SessionTra
     get lastTouchedAt(): number {
       return _lastTouchedAt;
     },
+    get ttlMs(): number {
+      return ttlMs;
+    },
 
     touch(): void {
       _lastTouchedAt = Date.now();
@@ -69,6 +72,11 @@ export const createSessionTracker = (ttlMs: number = DEFAULT_TTL_MS): SessionTra
 
     markSetupComplete(): void {
       _setupComplete = true;
+    },
+
+    isStale(now?: number): boolean {
+      const elapsed = (now ?? Date.now()) - _lastTouchedAt;
+      return elapsed > ttlMs;
     },
   };
 };

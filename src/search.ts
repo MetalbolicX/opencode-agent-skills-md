@@ -3,15 +3,38 @@
  *
  * Mirrors packages/core/src/search.ts behaviour.
  * Pure functions: no I/O, no host dependencies.
+ *
+ * ## Scoring systems
+ *
+ * ### Keyword scoring (`scoreSkill` — this module)
+ * - Pure string matching + fuzzy token similarity
+ * - Name exact match: 100 pts | name prefix: 90 pts | name fuzzy (>0.4 sim): 70*sim pts
+ * - Trigger includes token: 60 pts
+ * - Description includes all tokens: 50 pts | description includes any: 30 pts | fuzzy (>0.4 sim): 60*sim pts
+ * - Final score: max(per-token) + 0.1 * sum(per-token)
+ * - Accepts `Pick<Skill, "name"|"description"|"trigger"|"tags">` — no full Skill needed
+ *
+ * ### Semantic scoring (`rankSkills` — embeddings.ts)
+ * - Combines keyword scoring (primary) with bag-of-words cosine similarity (secondary boost)
+ * - Semantic boost: 0-1 cosine similarity scaled by 10 and added to keyword score
+ * - Only operates on SkillSummary (name, description, trigger)
  */
 
 import type { Skill } from "./types";
 import { levenshtein } from "./match";
 
+/**
+ * Escape special regex characters in a user query string so it can be safely
+ * used in a RegExp constructor without those characters acting as operators.
+ */
 export const escapeRegex = (input: string): string => {
   return input.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
 };
 
+/**
+ * Split a query into lowercase whitespace-separated tokens.
+ * Empty tokens are filtered out.
+ */
 export const tokenize = (query: string): string[] => {
   return query
     .toLowerCase()
@@ -19,6 +42,11 @@ export const tokenize = (query: string): string[] => {
     .filter((t) => t.length > 0);
 };
 
+/**
+ * Returns true when any keyword matches a skill's tag set.
+ * Used as a pre-filter before scoring — a skill must share at least one
+ * keyword tag to be considered a candidate.
+ */
 export const keywordMatch = (skill: Skill, keywords: string[]): boolean => {
   if (keywords.length === 0) return true;
   const tags = skill.tags ?? [];
@@ -40,7 +68,16 @@ const bestDescriptionTokenSim = (descLower: string, token: string): number => {
   return best;
 };
 
-export const scoreSkill = (skill: Skill, tokens: string[]): number => {
+/**
+ * B2: Keyword scoring function — generic over narrowed skill shape.
+ *
+ * Accepts any object with `name`, `description`, `trigger`, and `tags` fields.
+ * Removes the `as Skill` cast that was previously required in embeddings.ts.
+ */
+export const scoreSkill = (
+  skill: Pick<Skill, "name" | "description" | "trigger" | "tags">,
+  tokens: string[],
+): number => {
   if (tokens.length === 0) return 0;
   const name = skill.name.toLowerCase();
   const desc = skill.description.toLowerCase();
@@ -81,6 +118,19 @@ export const scoreSkill = (skill: Skill, tokens: string[]): number => {
   return max + 0.1 * sum;
 };
 
+/**
+ * Keyword-only skill search (no embeddings required).
+ *
+ * Pipeline:
+ * 1. Filter by keyword tags (optional)
+ * 2. Early-return for blank query
+ * 3. Tokenize + score each candidate with `scoreSkill`
+ * 4. Sort descending and return only candidates with score > 0
+ *
+ * The scoring system is documented at the top of this file under
+ * "Keyword scoring (`scoreSkill`)" — name exact-match > prefix > fuzzy,
+ * then trigger includes, then description match tier.
+ */
 export const searchSkills = (
   skills: Skill[],
   query: string,
