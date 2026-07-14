@@ -5,6 +5,8 @@
  * Pure functions: no I/O, no host dependencies.
  */
 
+import type { SkillSummary } from "./types";
+
 export const levenshtein = (a: string, b: string): number => {
   const m = a.length;
   const n = b.length;
@@ -59,4 +61,33 @@ export const findClosestMatch = (input: string, candidates: string[]): string | 
   }
 
   return bestScore >= 0.4 ? bestMatch : null;
+};
+
+/**
+ * Score-based keyword matcher for skills.
+ * Returns top-5 matched skills sorted by relevance score.
+ */
+export const matchSkillsByKeyword = (userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] => {
+  const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+  if (tokens.length === 0) return [];
+
+  const scored = availableSkills.map(skill => {
+    let score = 0;
+    const nameStr = skill.name.toLowerCase();
+    const descStr = skill.description.toLowerCase();
+    const triggerStr = skill.trigger?.toLowerCase() ?? "";
+
+    for (const token of tokens) {
+      if (nameStr.includes(token)) score += 2;
+      if (triggerStr.length > 0 && triggerStr.includes(token)) score += 1.5;
+      if (descStr.includes(token)) score += 1;
+    }
+    return { skill, score };
+  });
+
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map(s => s.skill);
 };

@@ -1,7 +1,7 @@
 /**
- * Utility helpers and shared directory walker.
+ * Filesystem directory walker.
  *
- * Mirrors packages/core/src/walk.ts and packages/core/src/debug.ts behaviour.
+ * Mirrors packages/core/src/walk.ts behaviour.
  */
 
 import * as fs from "node:fs/promises";
@@ -19,6 +19,7 @@ export interface WalkOptions {
  * Walk `baseDir` recursively up to `maxDepth`, invoking `visitor` for each entry.
  * Hidden directories, node_modules, and .git are skipped unconditionally.
  * Per-entry errors are isolated so a single broken entry does not abort the walk.
+ * Symlink/directory cycles are handled via visited-realpath dedupe.
  */
 export const walkDir = async (
   baseDir: string,
@@ -27,7 +28,8 @@ export const walkDir = async (
   options: WalkOptions = {}
 ): Promise<void> => {
   const skipDirs = options.skipDirs;
-  await walk(baseDir, 0, maxDepth, visitor, skipDirs);
+  const visitedRealpaths = new Set<string>();
+  await walk(baseDir, 0, maxDepth, visitor, skipDirs, visitedRealpaths);
 };
 
 const walk = async (
@@ -35,8 +37,19 @@ const walk = async (
   depth: number,
   maxDepth: number,
   visitor: (entry: Dirent, currentDepth: number) => void | Promise<void>,
-  skipDirs: ReadonlySet<string> | undefined
+  skipDirs: ReadonlySet<string> | undefined,
+  visitedRealpaths: Set<string>
 ): Promise<void> => {
+  // Dedupe by realpath: skip if we've already visited this physical directory
+  let dirRealpath: string;
+  try {
+    dirRealpath = await fs.realpath(dir);
+  } catch {
+    return;
+  }
+  if (visitedRealpaths.has(dirRealpath)) return;
+  visitedRealpaths.add(dirRealpath);
+
   if (depth > maxDepth) return;
 
   let entries: Dirent[];
@@ -58,15 +71,7 @@ const walk = async (
     }
 
     if (entry.isDirectory()) {
-      await walk(path.join(dir, entry.name), depth + 1, maxDepth, visitor, skipDirs);
+      await walk(path.join(dir, entry.name), depth + 1, maxDepth, visitor, skipDirs, visitedRealpaths);
     }
   }
-};
-
-/**
- * Debug-gated logging. Set OPENCODE_AGENT_SKILLS_DEBUG=1 to enable.
- */
-export const debugLog = (...args: unknown[]): void => {
-  if (!process.env.OPENCODE_AGENT_SKILLS_DEBUG) return;
-  console.error("[opencode-agent-skills-md]", ...args);
 };
