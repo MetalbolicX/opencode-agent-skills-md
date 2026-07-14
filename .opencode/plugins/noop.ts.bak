@@ -1,0 +1,10 @@
+export default {
+  id: "test-noop",
+  server: async () => ({
+    tool: {},
+    "chat.message": async () => {},
+    event: async () => {},
+    "tool.definition": async () => {},
+    "experimental.chat.system.transform": async () => {},
+  }),
+};

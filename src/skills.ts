@@ -18,8 +18,8 @@ import type {
   SkillLabel,
 } from "./types";
 import { parseSkillFile } from "./parse";
-import { walkDir } from "./utils";
-import { debugLog } from "./utils";
+import { walkDir } from "./fs-walk";
+import { debugLog } from "./log";
 import { discoverPluginCacheSkills, discoverMarketplaceSkills } from "./claude";
 
 export { parseSkillFile } from "./parse";
@@ -105,14 +105,33 @@ export const discoverAllSkills = async (
   roots: DiscoveryPath[] = getDefaultOpencodeRoots(directory),
   onDuplicate: (existing: Skill, duplicate: Skill) => void = defaultOnDuplicate
 ): Promise<Map<string, Skill>> => {
-  const allResults: LabeledDiscoveryResult[] = [];
-  for (const { path: baseDir, label, maxDepth } of roots) {
-    allResults.push(...await findSkillsRecursive(baseDir, label, maxDepth));
-  }
+  // C3: Parallel root scanning with per-root error isolation.
+  // Each root runs concurrently; one failing root does NOT abort others.
+  // Results are collected in root priority order (Promise.all preserves input order).
+  const resultsArrays = await Promise.all(
+    roots.map(async ({ path: baseDir, label, maxDepth }) => {
+      try {
+        return await findSkillsRecursive(baseDir, label, maxDepth);
+      } catch (err) {
+        debugLog("discoverAllSkills: root scan failed", baseDir, String(err));
+        return [];
+      }
+    })
+  );
+  const allResults: LabeledDiscoveryResult[] = resultsArrays.flat();
 
-  // 6-root discovery: add plugin cache and marketplace
-  allResults.push(...await discoverPluginCacheSkills());
-  allResults.push(...await discoverMarketplaceSkills());
+  // Plugin cache and marketplace — also scanned in parallel with per-call error isolation
+  const [pluginResults, marketplaceResults] = await Promise.all([
+    discoverPluginCacheSkills().catch((err) => {
+      debugLog("discoverAllSkills: plugin cache scan failed", String(err));
+      return [];
+    }),
+    discoverMarketplaceSkills().catch((err) => {
+      debugLog("discoverAllSkills: marketplace scan failed", String(err));
+      return [];
+    }),
+  ]);
+  allResults.push(...pluginResults, ...marketplaceResults);
 
   const skillsByName = new Map<string, Skill>();
   for (const { filePath, relativePath, label } of allResults) {
@@ -126,22 +145,6 @@ export const discoverAllSkills = async (
   }
 
   return skillsByName;
-};
-
-export const resolveSkill = (
-  skillName: string,
-  skillsByName: Map<string, Skill>
-): Skill | null => {
-  if (skillName.includes(':')) {
-    const [namespace, name] = skillName.split(':');
-    for (const skill of skillsByName.values()) {
-      if (skill.name === name && (skill.label === namespace || skill.namespace === namespace)) {
-        return skill;
-      }
-    }
-    return null;
-  }
-  return skillsByName.get(skillName) || null;
 };
 
 /**
@@ -181,41 +184,30 @@ export const listSkillFiles = async (skillPath: string, maxDepth: number = 3): P
   return files.sort();
 };
 
-/**
- * Format a list of skills as the inner bullet block used inside the
- * `<available-skills>` synthetic injection.
- * Omits `trigger` — trigger text only appears in targeted outputs.
- */
-export const formatSkillListing = (skills: Skill[]): string => {
-  return skills
-    .map((s) => `- ${s.name}: ${s.description}`)
-    .join("\n");
-};
-
-/**
- * Render the full `<available-skills>...</available-skills>` block that the
- * host injects into a session on startup and after compaction.
- */
-export const renderAvailableSkillsBlock = (skills: Skill[]): string => {
-  const skillsList = formatSkillListing(skills);
-  return `<available-skills>
-Use the use_skill, read_skill_file, run_skill_script, and get_available_skills tools to work with skills.
-
-${skillsList}
-</available-skills>`;
-};
-
 // Re-export renderSkillPreflightBlock for plugin.ts consumption
 export { renderSkillPreflightBlock } from "./preference";
 
+// Re-export formatting helpers for consumers that still import from skills.ts
+export { renderAvailableSkillsBlock } from "./preference";
+
+// Module-level TTL cache for getSkillSummaries (C4)
+const SUMMARY_CACHE_TTL_MS = 5 * 1000; // 5 seconds — mirrors DEFAULT_CACHE_TTL_MS
+let _summaryCache: { result: Array<{ name: string; description: string; trigger?: string }>; timestamp: number } | null = null;
+
 /**
  * Get summaries of all available skills.
+ * Results are cached with the same TTL as the SkillStore discovery cache (C4).
  */
 export const getSkillSummaries = async (directory: string): Promise<Array<{ name: string; description: string; trigger?: string }>> => {
+  if (_summaryCache && Date.now() - _summaryCache.timestamp < SUMMARY_CACHE_TTL_MS) {
+    return _summaryCache.result;
+  }
   const skillsByName = await discoverAllSkills(directory);
-  return Array.from(skillsByName.values()).map(skill => ({
+  const result = Array.from(skillsByName.values()).map(skill => ({
     name: skill.name,
     description: skill.description,
     trigger: skill.trigger,
   }));
+  _summaryCache = { result, timestamp: Date.now() };
+  return result;
 };

@@ -1,5 +1,5 @@
 /**
- * RED phase: Port of packages/core/tests/discovery.test.ts into root src/.
+ * Tests for skills discovery module.
  *
  * These tests verify discovery behaviour (walkDir, findSkillsRecursive, listSkillFiles)
  * against the new root-level modules. They FAIL in RED because src/skills.ts etc. do not exist.
@@ -111,7 +111,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("skips hidden directories and the unconditional dependency dirs", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(workspace, 3, (entry) => {
       visited.push(entry.name);
@@ -124,7 +124,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("honors maxDepth and stops recursing beyond it", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(path.join(workspace, "extra"), 0, (entry) => {
       visited.push(entry.name);
@@ -133,7 +133,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("isolates a throwing visitor so siblings still get visited", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(workspace, 1, (entry) => {
       if (entry.name === "visible") throw new Error("boom");
@@ -144,7 +144,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("accepts a caller-supplied skipDirs set", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const customSkip = new Set(["extra"]);
     const visited: string[] = [];
     await walkDir(workspace, 3, (entry) => {
@@ -155,7 +155,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("is graceful when baseDir does not exist", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const ghost = path.join(workspace, "does-not-exist");
     let called = false;
     await walkDir(ghost, 3, () => { called = true; });
@@ -331,6 +331,13 @@ describe("listSkillFiles", () => {
  * first-found-wins priority for duplicate names, and each skill
  * carries the correct label from its discovery root.
  */
+
+/**
+ * Phase 2 RED test — per-root scan failure isolation (C3)
+ *
+ * When roots are scanned in parallel via Promise.all, one failing root
+ * MUST NOT abort others. All healthy roots still return their results.
+ */
 describe("discoverAllSkills — four-root priority and labels", () => {
   let workspace: string;
 
@@ -372,6 +379,34 @@ describe("discoverAllSkills — four-root priority and labels", () => {
     assert.equal(skills.get("bravo")?.label, "claude-project", "bravo is claude-project label");
     assert.equal(skills.get("charlie")?.label, "user", "charlie is user label");
     assert.equal(skills.get("delta")?.label, "claude-user", "delta is claude-user label");
+  });
+
+  test("one failing root does not abort other roots when using Promise.all", async () => {
+    const { discoverAllSkills } = await import("./skills");
+    const subWs = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-isolation-"));
+    // r1: valid root with a skill
+    const r1 = path.join(subWs, ".opencode", "skills");
+    // r2: does-not-exist — a root that throws when accessed
+    const r2 = path.join(subWs, "does-not-exist", "skills");
+    // r3: another valid root
+    const r3 = path.join(subWs, "user-opencode", "skills");
+    await mkdir(r1, { recursive: true });
+    await mkdir(r3, { recursive: true });
+    await writeFile(path.join(r1, "SKILL.md"),
+      "---\nname: from-valid\ndescription: from valid root\n---\n# from-valid\n", "utf8");
+    await writeFile(path.join(r3, "SKILL.md"),
+      "---\nname: from-also-valid\ndescription: from another valid root\n---\n# from-also-valid\n", "utf8");
+
+    const roots: import("./types").DiscoveryPath[] = [
+      { path: r1, label: "project", maxDepth: 3 },
+      { path: r2, label: "broken", maxDepth: 3 },
+      { path: r3, label: "user", maxDepth: 3 },
+    ];
+    const skills = await discoverAllSkills(subWs, roots);
+    assert.equal(skills.size, 2, "two valid skills are still discovered despite broken root");
+    assert.ok(skills.has("from-valid"), "from-valid skill is present");
+    assert.ok(skills.has("from-also-valid"), "from-also-valid skill is present");
+    await rm(subWs, { recursive: true, force: true });
   });
 
   test("first-found skill wins when the same name appears in multiple roots", async () => {
@@ -429,60 +464,12 @@ describe("discoverAllSkills — four-root priority and labels", () => {
 });
 
 /**
- * `resolveSkill` pins: plain name lookup, namespace prefix parsing,
- * and null for unknown names.
- */
-describe("resolveSkill", () => {
-  let skillsMap: Map<string, import("./types").Skill>;
-
-  before(async () => {
-    const { discoverAllSkills } = await import("./skills");
-    // Bootstrap a minimal workspace
-    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-resolve-"));
-    await mkdir(path.join(workspace, ".opencode", "skills", "proj-skill"), { recursive: true });
-    await mkdir(path.join(workspace, ".claude", "skills", "claude-skill"), { recursive: true });
-    await writeFile(
-      path.join(workspace, ".opencode", "skills", "proj-skill", "SKILL.md"),
-      "---\nname: proj-skill\ndescription: a project skill\n---\n# proj-skill\n",
-      "utf8"
-    );
-    await writeFile(
-      path.join(workspace, ".claude", "skills", "claude-skill", "SKILL.md"),
-      "---\nname: claude-skill\ndescription: a claude skill\n---\n# claude-skill\n",
-      "utf8"
-    );
-    skillsMap = await discoverAllSkills(workspace);
-    await rm(workspace, { recursive: true, force: true });
-  });
-
-  test("resolves a plain skill name", async () => {
-    const { resolveSkill } = await import("./skills");
-    const skill = resolveSkill("proj-skill", skillsMap);
-    assert.ok(skill, "skill is found");
-    assert.equal(skill!.name, "proj-skill");
-  });
-
-  test("resolves a namespace-prefixed skill name", async () => {
-    const { resolveSkill } = await import("./skills");
-    const skill = resolveSkill("project:proj-skill", skillsMap);
-    assert.ok(skill, "namespaced skill is found");
-    assert.equal(skill!.name, "proj-skill");
-  });
-
-  test("returns null for an unknown skill name", async () => {
-    const { resolveSkill } = await import("./skills");
-    const skill = resolveSkill("does-not-exist", skillsMap);
-    assert.equal(skill, null, "unknown name returns null");
-  });
-});
-
-/**
  * `formatSkillListing` and `renderAvailableSkillsBlock` pin: compact bullet
  * format, no trigger leakage, and proper XML tag wrapping.
  */
 describe("formatSkillListing — compact bullet format without trigger leakage", () => {
   test("renders `- name: description` for each skill and omits trigger", async () => {
-    const { formatSkillListing } = await import("./skills");
+    const { formatSkillListing } = await import("./preference");
     const skills: Skill[] = [
       {
         name: "alpha",
@@ -515,7 +502,7 @@ describe("formatSkillListing — compact bullet format without trigger leakage",
   });
 
   test("returns empty string for an empty skill list", async () => {
-    const { formatSkillListing } = await import("./skills");
+    const { formatSkillListing } = await import("./preference");
     assert.equal(formatSkillListing([]), "");
   });
 });

@@ -49,9 +49,7 @@ export const applySystemTransform = (
   if (!isPreferenceModeEnabled(process.env.OPENCODE_AGENT_SKILLS_PREFERENCE_MODE)) {
     return false;
   }
-  if (!Array.isArray(output.system)) {
-    (output as { system: string[] }).system = [];
-  }
+  (output as { system: string[] }).system = output.system ?? [];
   (output as { system: string[] }).system.push(renderSkillPreferenceSystemBlock(summaries));
   return true;
 };
@@ -72,7 +70,12 @@ export const applyToolDefinition = (
   if (typeof output?.description !== "string") {
     (output as { description: string }).description = "";
   }
-  output.description = output.description + NATIVE_TOOL_PREFERENCE_NOTE;
+  // Idempotent: append the preference note at most once per description
+  const desc = output.description as string;
+  if (desc.includes(NATIVE_TOOL_PREFERENCE_NOTE.trim())) {
+    return true;
+  }
+  output.description = desc + NATIVE_TOOL_PREFERENCE_NOTE;
   return true;
 };
 

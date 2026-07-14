@@ -8,7 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Skill, SkillLabel } from "./types";
-import { debugLog } from "./utils";
+import { debugLog } from "./log";
 import { findScripts } from "./scripts";
 
 export interface SkillFrontmatter {
