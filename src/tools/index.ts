@@ -21,13 +21,13 @@ export { _escapeXml, _escapeShellArg, SKILL_SCRIPT_TIMEOUT_MS, runBoundSkillScri
 export { toolTranslation } from "./use-skill";
 
 export type OnSkillLoaded = (sessionID: string, skillName: string) => void;
-export type { SkillShell } from "./run-skill-script";
+export type { SkillShell, SkillShellResult } from "./run-skill-script";
 
 export interface SkillTools {
-  GetAvailableSkills: ReturnType<typeof createGetAvailableSkills>;
-  ReadSkillFile: ReturnType<typeof createReadSkillFile>;
-  RunSkillScript: ReturnType<typeof createRunSkillScript>;
-  UseSkill: ReturnType<typeof createUseSkill>;
+  get_available_skills: ReturnType<typeof createGetAvailableSkills>;
+  read_skill_file: ReturnType<typeof createReadSkillFile>;
+  run_skill_script: ReturnType<typeof createRunSkillScript>;
+  use_skill: ReturnType<typeof createUseSkill>;
 }
 
 export interface CreateSkillToolsOptions {
@@ -44,10 +44,14 @@ export interface CreateSkillToolsOptions {
 export const createSkillTools = (options: CreateSkillToolsOptions): SkillTools => {
   const { store, tracker, shell, onSkillLoaded, timeout = SKILL_SCRIPT_TIMEOUT_MS } = options;
 
+  if (!shell) {
+    throw new Error("createSkillTools: shell is required for run_skill_script");
+  }
+
   return {
-    GetAvailableSkills: createGetAvailableSkills({ store }),
-    ReadSkillFile: createReadSkillFile({ store }),
-    RunSkillScript: createRunSkillScript({ store, shell: shell!, timeout }),
-    UseSkill: createUseSkill({ store, tracker, onSkillLoaded }),
+    get_available_skills: createGetAvailableSkills({ store }),
+    read_skill_file: createReadSkillFile({ store }),
+    run_skill_script: createRunSkillScript({ store, shell, timeout }),
+    use_skill: createUseSkill({ store, tracker, onSkillLoaded }),
   };
 };
