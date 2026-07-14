@@ -18,8 +18,8 @@ import type {
   SkillLabel,
 } from "./types";
 import { parseSkillFile } from "./parse";
-import { walkDir } from "./utils";
-import { debugLog } from "./utils";
+import { walkDir } from "./fs-walk";
+import { debugLog } from "./log";
 import { discoverPluginCacheSkills, discoverMarketplaceSkills } from "./claude";
 
 export { parseSkillFile } from "./parse";
@@ -181,32 +181,11 @@ export const listSkillFiles = async (skillPath: string, maxDepth: number = 3): P
   return files.sort();
 };
 
-/**
- * Format a list of skills as the inner bullet block used inside the
- * `<available-skills>` synthetic injection.
- * Omits `trigger` — trigger text only appears in targeted outputs.
- */
-export const formatSkillListing = (skills: Skill[]): string => {
-  return skills
-    .map((s) => `- ${s.name}: ${s.description}`)
-    .join("\n");
-};
-
-/**
- * Render the full `<available-skills>...</available-skills>` block that the
- * host injects into a session on startup and after compaction.
- */
-export const renderAvailableSkillsBlock = (skills: Skill[]): string => {
-  const skillsList = formatSkillListing(skills);
-  return `<available-skills>
-Use the use_skill, read_skill_file, run_skill_script, and get_available_skills tools to work with skills.
-
-${skillsList}
-</available-skills>`;
-};
-
 // Re-export renderSkillPreflightBlock for plugin.ts consumption
 export { renderSkillPreflightBlock } from "./preference";
+
+// Re-export formatting helpers for consumers that still import from skills.ts
+export { renderAvailableSkillsBlock } from "./preference";
 
 /**
  * Get summaries of all available skills.
