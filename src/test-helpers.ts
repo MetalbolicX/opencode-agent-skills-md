@@ -34,8 +34,6 @@ export interface MockOpencodeClient {
       messages: (input: { path: { id: string } }) => Promise<{ data: unknown[] }>;
       prompt: (input: { path: { id: string }; body: { parts: Array<{ text: string }> } }) => Promise<void>;
     };
-    readFile: (path: string) => Promise<string>;
-    readdir: (path: string) => Promise<string[]>;
   };
   prompts: PromptRecord[];
 }
@@ -56,9 +54,13 @@ export async function createFixtureWorkspace(): Promise<FixtureWorkspace> {
   try {
     await cp(path.join(fixtureRoot, "project"), projectRoot, { recursive: true });
     await cp(path.join(fixtureRoot, "home"), homeRoot, { recursive: true });
-  } catch {
-    // Fixture directory not found — this is expected before the fixture tree
-    // is included in the commit. Tests that need fixtures will fail in RED.
+  } catch (err) {
+    // Surface the error so tests that depend on fixtures fail explicitly.
+    throw new Error(
+      `Fixture workspace setup failed: ${(err as Error).message}\n` +
+      `fixtureRoot: ${fixtureRoot}\n` +
+      `Ensure tests/fixtures/skills/{project,home} exist before running tests.`
+    );
   }
 
   const scriptedSkillPath = path.join(projectRoot, ".opencode", "skills", "scripted-skill");
@@ -99,8 +101,6 @@ export function createMockOpencodeClient(initialMessages: unknown[] = []): MockO
           prompts.push({ text, sessionID: sessionPath.id });
         },
       },
-      readFile: async (_path: string) => "mock file content",
-      readdir: async (_path: string) => [],
     },
   };
 }

@@ -111,7 +111,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("skips hidden directories and the unconditional dependency dirs", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(workspace, 3, (entry) => {
       visited.push(entry.name);
@@ -124,7 +124,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("honors maxDepth and stops recursing beyond it", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(path.join(workspace, "extra"), 0, (entry) => {
       visited.push(entry.name);
@@ -133,7 +133,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("isolates a throwing visitor so siblings still get visited", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const visited: string[] = [];
     await walkDir(workspace, 1, (entry) => {
       if (entry.name === "visible") throw new Error("boom");
@@ -144,7 +144,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("accepts a caller-supplied skipDirs set", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const customSkip = new Set(["extra"]);
     const visited: string[] = [];
     await walkDir(workspace, 3, (entry) => {
@@ -155,7 +155,7 @@ describe("walkDir shared walker", () => {
   });
 
   test("is graceful when baseDir does not exist", async () => {
-    const { walkDir } = await import("./utils");
+    const { walkDir } = await import("./fs-walk");
     const ghost = path.join(workspace, "does-not-exist");
     let called = false;
     await walkDir(ghost, 3, () => { called = true; });
@@ -482,7 +482,7 @@ describe("resolveSkill", () => {
  */
 describe("formatSkillListing — compact bullet format without trigger leakage", () => {
   test("renders `- name: description` for each skill and omits trigger", async () => {
-    const { formatSkillListing } = await import("./skills");
+    const { formatSkillListing } = await import("./preference");
     const skills: Skill[] = [
       {
         name: "alpha",
@@ -515,7 +515,7 @@ describe("formatSkillListing — compact bullet format without trigger leakage",
   });
 
   test("returns empty string for an empty skill list", async () => {
-    const { formatSkillListing } = await import("./skills");
+    const { formatSkillListing } = await import("./preference");
     assert.equal(formatSkillListing([]), "");
   });
 });
