@@ -4,10 +4,15 @@
 
 import type { Skill, SkillToolContext } from "../types";
 import { _escapeShellArg, SKILL_SCRIPT_TIMEOUT_MS, runBoundSkillScript } from "./shared";
+import { tool } from "@opencode-ai/plugin";
 
-// Define shell type separately to avoid circular reference in interface
-export type SkillShell = ((strings: TemplateStringsArray, ...values: unknown[]) => { text: () => Promise<string> }) & {
-  cwd: (d: string) => SkillShell;
+export type SkillShellResult = {
+  cwd(d: string): SkillShellResult;
+  text(): Promise<string>;
+};
+
+export type SkillShell = ((strings: TemplateStringsArray, ...values: unknown[]) => SkillShellResult) & {
+  cwd(d: string): SkillShell;
 };
 
 export interface RunSkillScriptDeps {
@@ -19,7 +24,13 @@ export interface RunSkillScriptDeps {
 }
 
 export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
-  return {
+  return tool({
+    description: "Run an executable script inside a skill directory.",
+    args: {
+      skill: tool.schema.string(),
+      script: tool.schema.string(),
+      arguments: tool.schema.array(tool.schema.string()).optional(),
+    },
     async execute(
       args: { skill: string; script: string; arguments?: string[] },
       ctx?: SkillToolContext,
@@ -57,10 +68,9 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
       }
 
       try {
-        shell.cwd(skill.path);
         const scriptArgs = (args.arguments || []).map(_escapeShellArg).join(" ");
         const result = await runBoundSkillScript(
-          shell`${script.absolutePath} ${scriptArgs}`.text(),
+          shell`${script.absolutePath} ${scriptArgs}`.cwd(skill.path).text(),
           ctx?.abort,
           timeout,
           script.absolutePath,
@@ -79,5 +89,5 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
         return `Script failed: ${String(error)}`;
       }
     },
-  };
+  });
 };
