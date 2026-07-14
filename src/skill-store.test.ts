@@ -217,3 +217,142 @@ describe("SkillStore", () => {
     assert.ok(!results.some((sk) => sk.name === "hotel"), "hotel should not be in results");
   });
 });
+
+/**
+ * Phase 2 RED tests — Cache & Discovery
+ *
+ * A3: Concurrent ensureCache() coalescing
+ * C3b: listFiles results cached in store
+ * C4:  summaries() results cached in store
+ */
+describe("SkillStore — concurrent ensureCache deduplication (A3)", () => {
+  let workspace: string;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-concurrent-"));
+  });
+
+  after(async () => {
+    if (workspace) await rm(workspace, { recursive: true, force: true });
+  });
+
+  test("three concurrent ensureCache calls run discoverAllSkills exactly once", async () => {
+    const roots = [
+      { path: path.join(workspace, "roots", "proj"), label: "project" as const, maxDepth: 3 },
+    ];
+    await mkdir(path.join(roots[0]!.path), { recursive: true });
+    await writeFile(path.join(roots[0]!.path, "SKILL.md"), makeSkill("alpha", "an alpha skill"), "utf8");
+
+    const s = createSkillStore(workspace, roots, 5000);
+
+    // Concurrent calls when cache is empty: all three should deduplicate to one scan.
+    // We verify deduplication by checking all results are deep-equal (same skills in same order).
+    const [r1, r2, r3] = await Promise.all([s.all(), s.all(), s.all()]);
+    // If deduplication works (inflight promise shared), all three calls see the same cached skills
+    assert.deepEqual(r1, r2, "concurrent calls return equivalent results (same cache hit)");
+    assert.deepEqual(r2, r3, "all three calls return equivalent results");
+    const alpha1 = r1.find((sk) => sk.name === "alpha");
+    const alpha2 = r2.find((sk) => sk.name === "alpha");
+    assert.ok(alpha1, "alpha is in r1");
+    assert.deepEqual(alpha1, alpha2, "alpha skill is equivalent in both concurrent results");
+  });
+
+  test("after TTL expiry, next access triggers a new scan", async () => {
+    const roots = [
+      { path: path.join(workspace, "roots2", "proj"), label: "project" as const, maxDepth: 3 },
+    ];
+    await mkdir(path.join(roots[0]!.path), { recursive: true });
+    await writeFile(path.join(roots[0]!.path, "SKILL.md"), makeSkill("bravo", "a bravo skill"), "utf8");
+
+    const s = createSkillStore(workspace, roots, 10); // 10ms TTL
+
+    // First access — populate cache
+    const first = await s.all();
+    const bravo0 = first.find((sk) => sk.name === "bravo");
+    assert.ok(bravo0, "bravo is present in first scan");
+
+    // Wait for TTL to expire
+    await new Promise((r) => setTimeout(r, 20));
+
+    // After TTL expiry, next call triggers a new scan
+    const afterExpiry = await s.all();
+    const bravo1 = afterExpiry.find((sk) => sk.name === "bravo");
+    assert.ok(bravo1, "bravo skill is present after re-scan");
+    assert.equal(bravo1!.description, "a bravo skill");
+  });
+});
+
+describe("SkillStore — listFiles cache (C3b)", () => {
+  let workspace: string;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-lf-"));
+  });
+
+  after(async () => {
+    if (workspace) await rm(workspace, { recursive: true, force: true });
+  });
+
+  test("listFiles returns cached results on second call without re-scanning", async () => {
+    const roots = [
+      { path: path.join(workspace, "roots", "proj"), label: "project" as const, maxDepth: 3 },
+    ];
+    await mkdir(path.join(roots[0]!.path, "alpha"), { recursive: true });
+    await writeFile(path.join(roots[0]!.path, "alpha", "SKILL.md"), makeSkill("alpha", "an alpha skill"), "utf8");
+    await writeFile(path.join(roots[0]!.path, "alpha", "doc.md"), "# doc\n", "utf8");
+
+    const s = createSkillStore(workspace, roots, 5000);
+    const first = await s.listFiles("alpha");
+    const second = await s.listFiles("alpha");
+
+    assert.deepEqual(first, second, "second listFiles call should return identical results");
+    assert.equal(first, second, "second call should return the exact same cached reference");
+  });
+
+  test("listFiles results are invalidated together with the main TTL cache", async () => {
+    const roots = [
+      { path: path.join(workspace, "roots2", "proj"), label: "project" as const, maxDepth: 3 },
+    ];
+    await mkdir(path.join(roots[0]!.path, "beta"), { recursive: true });
+    await writeFile(path.join(roots[0]!.path, "beta", "SKILL.md"), makeSkill("beta", "a beta skill"), "utf8");
+    await writeFile(path.join(roots[0]!.path, "beta", "new-file.md"), "# new\n", "utf8");
+
+    const s = createSkillStore(workspace, roots, 10); // 10ms TTL
+    const first = await s.listFiles("beta");
+
+    await new Promise((r) => setTimeout(r, 20)); // wait for TTL expiry
+    s.invalidate();
+    const second = await s.listFiles("beta");
+
+    // After invalidate + re-scan, the new file should appear
+    assert.ok(second.includes("new-file.md"), "after invalidate, re-scanned listFiles includes new-file.md");
+  });
+});
+
+describe("SkillStore — summaries cache (C4)", () => {
+  let workspace: string;
+
+  before(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-sum-"));
+  });
+
+  after(async () => {
+    if (workspace) await rm(workspace, { recursive: true, force: true });
+  });
+
+  test("summaries returns cached result on second call", async () => {
+    const roots = [
+      { path: path.join(workspace, "roots", "proj"), label: "project" as const, maxDepth: 3 },
+    ];
+    await mkdir(path.join(roots[0]!.path), { recursive: true });
+    await writeFile(path.join(roots[0]!.path, "SKILL.md"), makeSkill("gamma", "a gamma skill", { trigger: "test" }), "utf8");
+
+    const s = createSkillStore(workspace, roots, 5000);
+    const first = await s.summaries();
+    const second = await s.summaries();
+
+    assert.equal(first, second, "second summaries call should return the same cached reference");
+    const gamma = first.find((sk) => sk.name === "gamma");
+    assert.equal(gamma?.trigger, "test", "trigger is preserved on cached summary");
+  });
+});

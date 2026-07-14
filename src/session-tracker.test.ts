@@ -1,5 +1,5 @@
 /**
- * RED tests for SessionTracker: per-session state management.
+ * Tests for SessionTracker: per-session state management.
  *
  * Verifies:
  * - touch() updates lastTouchedAt
@@ -7,11 +7,11 @@
  * - clear() resets all session state
  * - isSetupComplete() returns false initially
  * - markSetupComplete() sets setup-complete flag
- * - TTL eviction removes stale entries
+ * - TTL staleness via isStale()
  */
 
 import assert from "node:assert/strict";
-import { after, before, describe, test } from "node:test";
+import { beforeEach, describe, test } from "node:test";
 import { createSessionTracker } from "./session-tracker";
 import type { SessionTracker } from "./types";
 
@@ -86,9 +86,55 @@ describe("SessionTracker", () => {
     tracker.markLoaded("skill-ro");
     const loaded = tracker.loadedSkills;
 
-    // Verify it is actually a ReadonlySet (type-level check via instanceof)
     assert.ok(loaded instanceof Set, "should be a Set instance");
     assert.equal(loaded.size, 1, "should have one entry");
     assert.ok(loaded.has("skill-ro"), "skill-ro should be present");
+  });
+
+  test("isStale() returns false for fresh session", () => {
+    const freshTracker = createSessionTracker(5000);
+    assert.equal(freshTracker.isStale(), false, "newly created tracker should not be stale");
+  });
+
+  test("isStale() returns true after TTL has elapsed", () => {
+    const shortTTL = 100; // 100ms TTL
+    const staleTracker = createSessionTracker(shortTTL);
+
+    // Advance time by 150ms past lastTouchedAt
+    const fakeNow = staleTracker.lastTouchedAt + 150;
+    assert.equal(staleTracker.isStale(fakeNow), true, "tracker should be stale after TTL expiry");
+  });
+
+  test("isStale() returns false before TTL has elapsed", () => {
+    const shortTTL = 5000; // 5s TTL
+    const tracker2 = createSessionTracker(shortTTL);
+
+    // Advance time by 1s (within TTL)
+    const fakeNow = tracker2.lastTouchedAt + 1000;
+    assert.equal(tracker2.isStale(fakeNow), false, "tracker should not be stale within TTL window");
+  });
+
+  test("isStale() boundary: exactly at TTL is not stale", () => {
+    const ttl = 3000;
+    const tracker3 = createSessionTracker(ttl);
+
+    // Exactly at TTL boundary — not stale (must be > TTL)
+    const atBoundary = tracker3.lastTouchedAt + ttl;
+    assert.equal(tracker3.isStale(atBoundary), false, "exactly at TTL should NOT be stale");
+  });
+
+  test("clear() resets lastTouchedAt, making session fresh again", () => {
+    const shortTTL = 100;
+    const staleTracker = createSessionTracker(shortTTL);
+
+    // Advance past TTL
+    const fakeNow = staleTracker.lastTouchedAt + 150;
+    assert.equal(staleTracker.isStale(fakeNow), true);
+
+    // clear() resets lastTouchedAt to now
+    staleTracker.clear();
+
+    // After clear, session should be fresh again (lastTouchedAt is approximately now)
+    assert.equal(staleTracker.isStale(), false, "tracker should not be stale after clear()");
   });
 });
