@@ -111,6 +111,75 @@ interface InstalledPlugins {
 }
 
 /**
+ * B1: Runtime type guard for InstalledPlugins manifest.
+ *
+ * Validates the parsed JSON structure before use. Replaces
+ * `JSON.parse(content) as InstalledPlugins` — malformed entries are skipped
+ * instead of causing downstream type errors.
+ *
+ * Returns null if root is not a plain object. Skips entries with missing or
+ * non-string `name` (v1) / `plugin_id` (v2). Arrays and primitives are rejected.
+ */
+export const validateInstalledPlugins = (data: unknown): InstalledPlugins | null => {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return null;
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  let plugins: InstalledPluginV1[] = [];
+  if (obj.plugins !== undefined) {
+    if (!Array.isArray(obj.plugins)) {
+      plugins = [];
+    } else {
+      for (const entry of obj.plugins) {
+        if (
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as Record<string, unknown>).name === "string" &&
+          (entry as Record<string, unknown>).name !== ""
+        ) {
+          plugins.push({
+            name: (entry as Record<string, unknown>).name as string,
+            version: typeof (entry as Record<string, unknown>).version === "string"
+              ? (entry as Record<string, unknown>).version as string
+              : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  let installed: InstalledPluginV2[] = [];
+  if (obj.installed !== undefined) {
+    if (!Array.isArray(obj.installed)) {
+      installed = [];
+    } else {
+      for (const entry of obj.installed) {
+        if (
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as Record<string, unknown>).plugin_id === "string" &&
+          (entry as Record<string, unknown>).plugin_id !== ""
+        ) {
+          installed.push({
+            plugin_id: (entry as Record<string, unknown>).plugin_id as string,
+            installed_path: typeof (entry as Record<string, unknown>).installed_path === "string"
+              ? (entry as Record<string, unknown>).installed_path as string
+              : undefined,
+            version: typeof (entry as Record<string, unknown>).version === "string"
+              ? (entry as Record<string, unknown>).version as string
+              : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  return { plugins, installed };
+};
+
+/**
  * Discover skills from installed marketplace plugins.
  *
  * Reads ~/.claude/plugins/installed_plugins.json to find installed plugins,
@@ -137,7 +206,13 @@ export const discoverMarketplaceSkills = async (): Promise<LabeledDiscoveryResul
   try {
     const installedPluginsPath = path.join(CLAUDE_PLUGINS_DIR, "installed_plugins.json");
     const content = await fs.readFile(installedPluginsPath, "utf-8");
-    installedPlugins = JSON.parse(content) as InstalledPlugins;
+    const parsed = JSON.parse(content);
+    const validated = validateInstalledPlugins(parsed);
+    if (!validated) {
+      debugLog("discoverMarketplaceSkills: installed_plugins.json is malformed — skipping");
+      return [];
+    }
+    installedPlugins = validated;
   } catch (error) {
     debugLog("discoverMarketplaceSkills: could not read installed_plugins.json", error);
     return [];
