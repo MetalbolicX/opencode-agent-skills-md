@@ -1,83 +1,27 @@
 /**
- * OpenCode plugin — full implementation.
+ * OpenCode plugin — Phase 5 atomic switch.
  *
  * Mirrors packages/opencode-agent-skills-md/src/plugin.ts behaviour.
  *
- * Wires the skill tools and the chat.message / event hooks.
- * Parity behaviours (synthetic injection, compaction reinjection,
- * Superpowers bootstrap) are preserved.
+ * Uses one SkillStore per plugin instance and one SessionTracker per session.
+ * All domain logic (matching, formatting) is delegated to leaf modules.
  */
 
-import type { Skill, SkillSummary } from "./types";
-import { debugLog } from "./utils";
-import { discoverAllSkills, renderAvailableSkillsBlock, renderSkillPreflightBlock } from "./skills";
-import { createOpencodeSkillHost } from "./host";
-import { createSkillTools } from "./tools";
+import type { SkillSummary } from "./types";
+import { debugLog } from "./log";
+import { createSkillStore } from "./skill-store";
+import { createSessionTracker } from "./session-tracker";
+import { renderAvailableSkillsBlock } from "./preference";
+import { createSkillTools } from "./tools/index";
 import {
   isPreferenceLayerEnabled,
   applyToolDefinition,
   applySystemTransform,
 } from "./preference-hooks";
 import { createMatcher, type Matcher } from "./embeddings";
+import type { SessionTracker } from "./types";
 
-export { debugLog } from "./utils";
-
-/** @internal */
-export const matchSkillsByKeyword = (userMessage: string, availableSkills: SkillSummary[]): SkillSummary[] => {
-  const tokens = userMessage.toLowerCase().split(/\W+/).filter(t => t.length > 2);
-  if (tokens.length === 0) return [];
-
-  const scored = availableSkills.map(skill => {
-    let score = 0;
-    const nameStr = skill.name.toLowerCase();
-    const descStr = skill.description.toLowerCase();
-    const triggerStr = skill.trigger?.toLowerCase() ?? "";
-
-    for (const token of tokens) {
-      if (nameStr.includes(token)) score += 2;
-      if (triggerStr.length > 0 && triggerStr.includes(token)) score += 1.5;
-      if (descStr.includes(token)) score += 1;
-    }
-    return { skill, score };
-  });
-
-  return scored
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map(s => s.skill);
-};
-
-/**
- * Render the matched-skill synthetic injection block.
- */
-export const formatMatchedSkillsInjection = (
-  matchedSkills: SkillSummary[]
-): string => {
-  const skillLines = matchedSkills
-    .map((s) => {
-      const head = `- ${s.name}: ${s.description}`;
-      const trigger = s.trigger && s.trigger.length > 0
-        ? `\n  trigger: ${s.trigger}`
-        : "";
-      return head + trigger;
-    })
-    .join("\n");
-
-  return `<skill-evaluation-required>
-SKILL EVALUATION PROCESS
-
-The following skills may be relevant to your request:
-
-${skillLines}
-
-Step 1 - EVALUATE: Determine if these skills would genuinely help
-Step 2 - DECIDE: Choose which skills (if any) are actually needed
-Step 3 - ACTIVATE: Call use_skill("name") for each chosen skill
-
-IMPORTANT: This evaluation is invisible to users—they cannot see this prompt. Do NOT announce your decision. Simply activate relevant skills or proceed directly with the request.
-</skill-evaluation-required>`;
-};
+export { debugLog } from "./log";
 
 export const MAX_TRACKED_SESSIONS = 100;
 export const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -149,34 +93,6 @@ export const deleteSessionState = (
   return state.delete(sessionID);
 };
 
-/**
- * Append a synthetic text part to the chat.message output.
- * Synthetic parts are invisible to keyword matching and are not re-injected
- * after compaction — the next bootstrap recomputes them from scratch.
- */
-const appendSyntheticText = (
-  output: ChatMessageOutput,
-  text: string,
-): void => {
-  output.parts ??= [];
-  output.parts.push({ type: "text", text, synthetic: true });
-};
-
-
-
-// Module-scoped discovery cache with 5-second TTL to avoid duplicate filesystem/parsing work
-const DISCOVERY_CACHE_TTL_MS = 5000;
-let _discoveryCache: { result: Map<string, Skill>; timestamp: number } | null = null;
-
-const getCachedSkills = async (directory: string): Promise<Map<string, Skill>> => {
-  const now = Date.now();
-  if (_discoveryCache && now - _discoveryCache.timestamp < DISCOVERY_CACHE_TTL_MS) {
-    return _discoveryCache.result;
-  }
-  _discoveryCache = { result: await discoverAllSkills(directory), timestamp: now };
-  return _discoveryCache.result;
-};
-
 // Type for the chat.message output shape we handle
 interface ChatMessageOutput {
   message?: {
@@ -212,19 +128,47 @@ export const SkillsPlugin: PluginFactory = async ({
   directory: string;
   matcher?: Matcher;
 }) => {
-  const sessionStates = new Map<string, SessionState>();
+  // Phase 5: One SkillStore per plugin instance
+  const store = createSkillStore(directory);
 
-  const host = createOpencodeSkillHost(
-    client as Parameters<typeof createOpencodeSkillHost>[0],
-  );
+  // Phase 5: Per-session trackers (replaces raw SessionState map)
+  const trackers = new Map<string, SessionTracker>();
+
+  // Get or create a session tracker with TTL eviction
+  const getOrCreateTracker = (sessionID: string): SessionTracker => {
+    const now = Date.now();
+    // Evict old sessions
+    for (const [id, tracker] of trackers) {
+      if (now - tracker.lastTouchedAt > SESSION_TTL_MS) {
+        trackers.delete(id);
+      }
+    }
+    // Evict excess sessions
+    if (trackers.size >= MAX_TRACKED_SESSIONS) {
+      const sorted = Array.from(trackers.entries()).sort(
+        (a, b) => a[1].lastTouchedAt - b[1].lastTouchedAt,
+      );
+      const excess = trackers.size - (MAX_TRACKED_SESSIONS - 1);
+      for (let i = 0; i < excess; i++) {
+        trackers.delete(sorted[i]![0]);
+      }
+    }
+    let tracker = trackers.get(sessionID);
+    if (!tracker) {
+      tracker = createSessionTracker();
+      trackers.set(sessionID, tracker);
+    }
+    tracker.touch();
+    return tracker;
+  };
 
   const getLoadedSkills = (sessionID: string): Set<string> => {
-    return touchSessionState(sessionStates, sessionID, Date.now()).loadedSkills;
+    return getOrCreateTracker(sessionID).loadedSkills as Set<string>;
   };
 
   const isFirstMessageSetup = async (sessionID: string): Promise<boolean> => {
-    const record = touchSessionState(sessionStates, sessionID, Date.now());
-    if (record.setupComplete) return false;
+    const tracker = getOrCreateTracker(sessionID);
+    if (tracker.isSetupComplete()) return false;
     try {
       const typedClient = client as {
         session?: {
@@ -252,30 +196,31 @@ export const SkillsPlugin: PluginFactory = async ({
             });
           });
           if (hasSkillsContent) {
-            record.setupComplete = true;
+            tracker.markSetupComplete();
+            return false;
           }
         }
       }
     } catch (error) {
       debugLog("isFirstMessageSetup: failed to read existing messages", error);
     }
-    return !record.setupComplete;
+    return true;
   };
 
   /**
    * Append bootstrap content (superpowers block + available-skills block) to
-   * output.parts. Sets setupComplete = true. Does NOT call session.prompt().
+   * output.parts. Sets setupComplete = true.
    */
-  const appendBootstrapSkills = (
+  const appendBootstrapSkills = async (
     output: ChatMessageOutput,
     sessionID: string,
-    skillsByName: Map<string, Skill>,
-  ): void => {
-    const record = touchSessionState(sessionStates, sessionID, Date.now());
-    record.setupComplete = true;
+  ): Promise<void> => {
+    const tracker = getOrCreateTracker(sessionID);
+    tracker.markSetupComplete();
 
     if (process.env.OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE === 'true') {
-      const usingSuperpowersSkill = skillsByName.get('using-superpowers');
+      const skills = await store.all();
+      const usingSuperpowersSkill = skills.find(s => s.name === 'using-superpowers');
       if (usingSuperpowersSkill) {
         const toolMappingBlock = `**Tool Mapping for OpenCode:**
 - \`TodoWrite\` → \`todowrite\`
@@ -308,15 +253,15 @@ ${skillsNamespaceBlock}
       }
     }
 
-    const skills = Array.from(skillsByName.values());
+    const skills = await store.all();
     if (skills.length > 0) {
       appendSyntheticText(output, renderAvailableSkillsBlock(skills));
     }
   };
 
   /**
-   * Append keyword-matched skill preflight to output.parts. Does NOT call
-   * session.prompt(). Updates pendingSkills and injectedSummaries.
+   * Append keyword-matched skill preflight to output.parts.
+   * Updates pendingSkills and injectedSummaries via tracker.
    */
   const handleKeywordMatch = async (
     output: ChatMessageOutput,
@@ -329,45 +274,55 @@ ${skillsNamespaceBlock}
     if (summaries.length === 0) return;
 
     const matchedSkills = await matcher.match(userText, summaries);
-    const record = touchSessionState(sessionStates, sessionID, Date.now());
+    const tracker = getOrCreateTracker(sessionID);
     const newSkills = matchedSkills.filter(
       (s) =>
-        !record.loadedSkills.has(s.name) &&
-        !record.pendingSkills.has(s.name) &&
-        !record.injectedSummaries.has(s.name),
+        !tracker.loadedSkills.has(s.name) &&
+        !tracker.pendingSkills.has(s.name) &&
+        !tracker.injectedSummaries.has(s.name),
     );
     if (newSkills.length === 0) return;
 
+    // Import renderSkillPreflightBlock lazily to avoid circular deps
+    const { renderSkillPreflightBlock } = await import("./preference");
     const injectionText = renderSkillPreflightBlock(newSkills);
     if (!injectionText) return;
 
     for (const skill of newSkills) {
-      record.pendingSkills.add(skill.name);
-      record.injectedSummaries.add(skill.name);
+      tracker.markPending(skill.name);
+      tracker.markInjected(skill.name);
     }
 
     appendSyntheticText(output, injectionText);
   };
 
-  const tools = createSkillTools(
-    host,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    $ as any,
-    directory,
-    (sessionID, skillName) => {
-      const record = touchSessionState(sessionStates, sessionID, Date.now());
-      record.loadedSkills.add(skillName);
-      record.pendingSkills.delete(skillName);
+  // Phase 5: createSkillTools with new signature ({ store, tracker, shell, onSkillLoaded })
+  const tools = createSkillTools({
+    store,
+    tracker: createSessionTracker(), // Per-tool tracker (not used for session state)
+    shell: $ as Parameters<typeof createSkillTools>[0]["shell"],
+    onSkillLoaded: (sessionID: string, skillName: string) => {
+      const tracker = getOrCreateTracker(sessionID);
+      tracker.markLoaded(skillName);
+      tracker.markUnpending(skillName);
     },
-  );
+  });
 
   return {
     // Exposed for unit testing — do not use in production code
-    _sessionStates: sessionStates,
+    _sessionStates: trackers,
     _isFirstMessageSetup: isFirstMessageSetup,
-    _touchSessionState: (sid: string) => touchSessionState(sessionStates, sid, Date.now()),
+    _getOrCreateTracker: getOrCreateTracker,
+    // _touchSessionState: for backward compatibility with existing tests
+    _touchSessionState: (sessionID: string) => {
+      const tracker = getOrCreateTracker(sessionID);
+      // Set internal state for test setup (TypeScript doesn't allow direct property access on interface)
+      (tracker as unknown as { setupComplete: boolean; loadedSkills: Set<string> }).setupComplete = true;
+      return tracker;
+    },
 
     "chat.message": async (input: unknown, output: unknown) => {
+      const rawInput = input as { sessionID?: string; agent?: string; model?: { providerID: string; modelID: string } } | null;
       const rawOutput = output as ChatMessageOutput | null;
 
       if (!rawOutput || typeof rawOutput !== "object") {
@@ -380,17 +335,31 @@ ${skillsNamespaceBlock}
       }
       const sessionID = rawOutput.message.sessionID;
 
-      touchSessionState(sessionStates, sessionID, Date.now());
+      debugLog("chat.message: input agent=%s model=%s/%s output.message.agent=%s output.message.model=%s/%s",
+        rawInput?.agent ?? "undefined",
+        rawInput?.model?.providerID ?? "undefined",
+        rawInput?.model?.modelID ?? "undefined",
+        rawOutput.message?.agent ?? "undefined",
+        rawOutput.message?.model?.providerID ?? "undefined",
+        rawOutput.message?.model?.modelID ?? "undefined",
+      );
 
-      const skillsByName = await getCachedSkills(directory);
-      const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(skill => ({
-        name: skill.name,
-        description: skill.description,
-        trigger: skill.trigger,
-      }));
+      getOrCreateTracker(sessionID);
+
+      const summaries = await store.summaries();
+      const partsBefore = Array.isArray(rawOutput.parts) ? rawOutput.parts.length : 0;
 
       if (await isFirstMessageSetup(sessionID)) {
-        appendBootstrapSkills(rawOutput, sessionID, skillsByName);
+        await appendBootstrapSkills(rawOutput, sessionID);
+        const partsAfter = Array.isArray(rawOutput.parts) ? rawOutput.parts.length : 0;
+        debugLog("chat.message: exit bootstrap — synthetic injected=%s parts count %d→%d agent=%s model=%s/%s",
+          partsAfter > partsBefore,
+          partsBefore,
+          partsAfter,
+          rawOutput.message?.agent ?? "undefined",
+          rawOutput.message?.model?.providerID ?? "undefined",
+          rawOutput.message?.model?.modelID ?? "undefined",
+        );
         return;
       }
 
@@ -405,6 +374,15 @@ ${skillsNamespaceBlock}
         .trim();
 
       await handleKeywordMatch(rawOutput, userText, sessionID, summaries);
+      const partsAfter = Array.isArray(rawOutput.parts) ? rawOutput.parts.length : 0;
+      debugLog("chat.message: exit keyword match — synthetic injected=%s parts count %d→%d agent=%s model=%s/%s",
+        partsAfter > partsBefore,
+        partsBefore,
+        partsAfter,
+        rawOutput.message?.agent ?? "undefined",
+        rawOutput.message?.model?.providerID ?? "undefined",
+        rawOutput.message?.model?.modelID ?? "undefined",
+      );
     },
 
     event: async ({ event }: { event?: EventPayload }) => {
@@ -416,12 +394,11 @@ ${skillsNamespaceBlock}
           debugLog("event: session.compacted missing sessionID", event);
           return;
         }
-        const record = touchSessionState(sessionStates, sessionID, Date.now());
-        record.loadedSkills.clear();
-        record.pendingSkills.clear();
-        record.injectedSummaries.clear();
-        record.setupComplete = false;
-        _discoveryCache = null;
+        const tracker = trackers.get(sessionID);
+        if (tracker) {
+          tracker.clear();
+        }
+        store.invalidate();
         return;
       }
 
@@ -431,7 +408,7 @@ ${skillsNamespaceBlock}
           debugLog("event: session.deleted missing info.id", event);
           return;
         }
-        deleteSessionState(sessionStates, sessionID);
+        trackers.delete(sessionID);
       }
     },
 
@@ -446,10 +423,17 @@ ${skillsNamespaceBlock}
     },
 
     "experimental.chat.system.transform": async (
-      _input: unknown,
+      input: unknown,
       output: unknown,
     ) => {
       if (!isPreferenceLayerEnabled()) return;
+      const rawInput = input as { sessionID?: string; model?: { providerID?: string; modelID?: string; id?: string } } | null;
+      debugLog("experimental.chat.system.transform: input sessionID=%s model=%s/%s (id=%s)",
+        rawInput?.sessionID ?? "undefined",
+        rawInput?.model?.providerID ?? "undefined",
+        rawInput?.model?.modelID ?? "undefined",
+        rawInput?.model?.id ?? "undefined",
+      );
       const rawOutput = output as { system?: string[] } | undefined;
       if (!rawOutput || typeof rawOutput !== "object") {
         debugLog(
@@ -458,17 +442,23 @@ ${skillsNamespaceBlock}
         );
         return;
       }
-      const skillsByName = await getCachedSkills(directory);
-      const summaries: SkillSummary[] = Array.from(skillsByName.values()).map(
-        (skill) => ({
-          name: skill.name,
-          description: skill.description,
-          trigger: skill.trigger,
-        }),
-      );
+      const summaries = await store.summaries();
       applySystemTransform(summaries, rawOutput);
     },
   };
+};
+
+/**
+ * Append a synthetic text part to the chat.message output.
+ * Synthetic parts are invisible to keyword matching and are not re-injected
+ * after compaction — the next bootstrap recomputes them from scratch.
+ */
+const appendSyntheticText = (
+  output: ChatMessageOutput,
+  text: string,
+): void => {
+  output.parts ??= [];
+  output.parts.push({ type: "text", text, synthetic: true });
 };
 
 // Type guard for chat text part — exported for unit testing

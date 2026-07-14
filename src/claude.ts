@@ -9,8 +9,8 @@ import { homedir } from "node:os";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { LabeledDiscoveryResult } from "./types";
-import { walkDir } from "./utils";
-import { debugLog } from "./utils";
+import { walkDir } from "./fs-walk";
+import { debugLog } from "./log";
 
 const CLAUDE_PLUGINS_CACHE = path.join(homedir(), ".claude", "plugins", "cache");
 const CLAUDE_PLUGINS_DIR = path.join(homedir(), ".claude", "plugins");

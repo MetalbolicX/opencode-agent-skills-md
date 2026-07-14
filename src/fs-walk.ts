@@ -1,7 +1,7 @@
 /**
- * Utility helpers and shared directory walker.
+ * Filesystem directory walker.
  *
- * Mirrors packages/core/src/walk.ts and packages/core/src/debug.ts behaviour.
+ * Mirrors packages/core/src/walk.ts behaviour.
  */
 
 import * as fs from "node:fs/promises";
@@ -61,12 +61,4 @@ const walk = async (
       await walk(path.join(dir, entry.name), depth + 1, maxDepth, visitor, skipDirs);
     }
   }
-};
-
-/**
- * Debug-gated logging. Set OPENCODE_AGENT_SKILLS_DEBUG=1 to enable.
- */
-export const debugLog = (...args: unknown[]): void => {
-  if (!process.env.OPENCODE_AGENT_SKILLS_DEBUG) return;
-  console.error("[opencode-agent-skills-md]", ...args);
 };
