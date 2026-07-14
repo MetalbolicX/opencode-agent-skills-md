@@ -34,8 +34,6 @@ export interface MockOpencodeClient {
       messages: (input: { path: { id: string } }) => Promise<{ data: unknown[] }>;
       prompt: (input: { path: { id: string }; body: { parts: Array<{ text: string }> } }) => Promise<void>;
     };
-    readFile: (path: string) => Promise<string>;
-    readdir: (path: string) => Promise<string[]>;
   };
   prompts: PromptRecord[];
 }
@@ -99,8 +97,6 @@ export function createMockOpencodeClient(initialMessages: unknown[] = []): MockO
           prompts.push({ text, sessionID: sessionPath.id });
         },
       },
-      readFile: async (_path: string) => "mock file content",
-      readdir: async (_path: string) => [],
     },
   };
 }
