@@ -5,6 +5,7 @@
 import type { Skill, SkillToolContext, SessionTracker } from "../types";
 import { _escapeXml } from "./shared";
 import { debugLog } from "../log";
+import { tool } from "@opencode-ai/plugin";
 
 /**
  * Tool translation guide for skills written for Claude Code.
@@ -27,7 +28,11 @@ export interface UseSkillDeps {
 }
 
 export const createUseSkill = (deps: UseSkillDeps) => {
-  return {
+  return tool({
+    description: "Load a skill and return its instructions so the model can use it.",
+    args: {
+      skill: tool.schema.string(),
+    },
     async execute(args: { skill: string }, ctx?: SkillToolContext) {
       const { store, tracker, onSkillLoaded } = deps;
 
@@ -66,6 +71,11 @@ export const createUseSkill = (deps: UseSkillDeps) => {
         ? `\n    <files>\n${skillFiles.map(f => `      <file>${_escapeXml(f)}</file>`).join('\n')}\n    </files>`
         : '';
 
+      // CDATA-wrap template to isolate injected content containing XML-like markup
+      // Handle ]]> edge case: split into separate CDATA sections
+      const safeTemplate = skill.template.replace(/]]>/g, "]]]]><![CDATA[>");
+      const contentXml = `\n    <content><![CDATA[${safeTemplate}]]></content>\n`;
+
       return `<skill name="${_escapeXml(skill.name)}">
   <metadata>
     <source>${_escapeXml(skill.label)}</source>
@@ -73,11 +83,8 @@ export const createUseSkill = (deps: UseSkillDeps) => {
   </metadata>
 
   ${toolTranslation}
-
-  <content>
-${skill.template}
-  </content>
+${contentXml}
 </skill>`;
     },
-  };
+  });
 };
