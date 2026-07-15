@@ -38,12 +38,25 @@ const createMemFs = (initial: MemStore = {}): CliFs & { store: MemStore } => {
       // no-op for in-memory fs
     },
     readdirSync: (path: string) => {
+      // ENOENT when the path is a file (not a directory)
+      if (store[path] !== undefined) {
+        throw new Error(`ENOENT: not a directory '${path}'`);
+      }
       const dir = path.endsWith("/") ? path : path + "/";
-      return Object.keys(store)
-        .filter((k) => k.startsWith(dir) && k !== dir)
-        .map((k) => k.slice(dir.length).split("/")[0]!);
+      const entries = Object.keys(store).filter((k) => k.startsWith(dir) && k !== dir);
+      if (entries.length === 0) {
+        const hasAny = Object.keys(store).some((k) => k.startsWith(dir));
+        if (!hasAny) throw new Error(`ENOENT: no such directory '${path}'`);
+        return [];
+      }
+      return [...new Set(entries.map((k) => k.slice(dir.length).split("/")[0]!))];
     },
-    existsSync: (path: string) => store[path] !== undefined,
+    existsSync: (path: string) => {
+      if (store[path] !== undefined) return true;
+      // Directory exists if it has any child entries in the store
+      const dir = path.endsWith("/") ? path : path + "/";
+      return Object.keys(store).some((k) => k.startsWith(dir));
+    },
     rmdirSync: (path: string) => {
       const dir = path.endsWith("/") ? path : path + "/";
       for (const k of Object.keys(store)) {
@@ -149,10 +162,71 @@ describe("purge", () => {
     const result = runUninstallSync({ purge: true, dryRun: true }, fs);
 
     expect(result.status).toBe("planned");
-    expect(result.purged).toContain(`/home/user/.cache/opencode/node_modules/opencode-agent-skills-md`);
+    // Uses resolveCachePaths — covers bare and @latest variants
+    expect(result.purged).toContain(
+      `/home/user/.cache/opencode/packages/opencode-agent-skills-md`,
+    );
+    expect(result.purged).toContain(
+      `/home/user/.cache/opencode/packages/opencode-agent-skills-md@latest`,
+    );
     expect(result.removed).toEqual(["opencode-agent-skills-md@latest"]);
     // Config not actually written
     expect(JSON.parse(fs.store[CONFIG_PATH]).plugin).toEqual(["opencode-agent-skills-md@latest"]);
+  });
+
+  test("purge deletes every resolved cache path (bare and @latest variants)", () => {
+    const fs = createMemFs();
+    // Set up cache directories in memfs (files under the cache dir paths)
+    fs.store["/home/user/.cache/opencode/packages/opencode-agent-skills-md/package.json"] =
+      '{"name":"opencode-agent-skills-md","version":"1.0.0"}';
+    fs.store["/home/user/.cache/opencode/packages/opencode-agent-skills-md@latest/package.json"] =
+      '{"name":"opencode-agent-skills-md","version":"2.0.0"}';
+    configFile(fs.store, { plugin: ["opencode-agent-skills-md@latest"] });
+
+    const result = runUninstallSync({ purge: true }, fs);
+
+    expect(result.status).toBe("wrote");
+    expect(result.purged).toContain(
+      `/home/user/.cache/opencode/packages/opencode-agent-skills-md`,
+    );
+    expect(result.purged).toContain(
+      `/home/user/.cache/opencode/packages/opencode-agent-skills-md@latest`,
+    );
+    // Cache dirs must be removed from store
+    expect(
+      fs.store["/home/user/.cache/opencode/packages/opencode-agent-skills-md/package.json"],
+    ).toBeUndefined();
+    expect(
+      fs.store["/home/user/.cache/opencode/packages/opencode-agent-skills-md@latest/package.json"],
+    ).toBeUndefined();
+  });
+
+  test("purge safely handles no cache entries (best-effort, non-fatal)", () => {
+    const fs = createMemFs();
+    // No cache directories at all — purge should not throw
+    configFile(fs.store, { plugin: ["opencode-agent-skills-md@latest"] });
+
+    const result = runUninstallSync({ purge: true }, fs);
+
+    expect(result.status).toBe("wrote");
+    expect(result.removed).toEqual(["opencode-agent-skills-md@latest"]);
+    // No purge targets found
+    expect(result.purged).toEqual([]);
+  });
+
+  test("purge removes cache even when no plugin entry exists in config", () => {
+    const fs = createMemFs();
+    // Cache dir exists but no plugin in config
+    fs.store["/home/user/.cache/opencode/packages/opencode-agent-skills-md/package.json"] =
+      '{"name":"opencode-agent-skills-md"}';
+
+    const result = runUninstallSync({ purge: true }, fs);
+
+    // Status is "wrote" because cache was purged (even though no plugin in config)
+    expect(result.status).toBe("wrote");
+    expect(result.purged).toContain(
+      "/home/user/.cache/opencode/packages/opencode-agent-skills-md",
+    );
   });
 });
 
