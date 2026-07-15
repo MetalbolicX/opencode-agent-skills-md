@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CliFs } from "./config";
 import { createRealFs } from "./real-fs";
+import { resolveCachePaths } from "./cache";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,6 +107,53 @@ export const getInstalledVersion = (
   const version = (parsed as Record<string, unknown>).version;
   if (typeof version !== "string" || version.length === 0) return null;
   return version;
+};
+
+// ---------------------------------------------------------------------------
+// getCachedPluginVersion
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the version of the cached plugin installation from the OpenCode
+ * package cache directory.
+ *
+ * Uses `resolveCachePaths` to find all matching cache directories
+ * (both bare `opencode-agent-skills-md` and `@version` variants), then
+ * reads `package.json` from each. Returns the first valid version found,
+ * or `null` if no cached installation exists or the manifest is missing or
+ * malformed.
+ *
+ * This function reads the CACHED plugin version — it does NOT read the
+ * CLI's own installed version (use `getInstalledVersion` for that).
+ * Diagnostics should distinguish between cached and installed to avoid
+ * reporting stale cache as "current".
+ */
+export const getCachedPluginVersion = (
+  fs: CliFs,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null => {
+  const cachePaths = resolveCachePaths(env, fs);
+  for (const cachePath of cachePaths) {
+    const pkgPath = join(cachePath, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    let raw: string;
+    try {
+      raw = fs.readFileSync(pkgPath);
+    } catch {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const version = (parsed as Record<string, unknown>).version;
+    if (typeof version !== "string" || version.length === 0) continue;
+    return version;
+  }
+  return null;
 };
 
 // ---------------------------------------------------------------------------
