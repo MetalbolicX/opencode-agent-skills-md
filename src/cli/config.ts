@@ -53,6 +53,7 @@ export interface CliFs {
   mkdirSync(path: string, opts?: { recursive?: boolean }): void;
   readdirSync(path: string): string[];
   existsSync(path: string): boolean;
+  rmdirSync(path: string): void;
 }
 
 // ---------------------------------------------------------------------------

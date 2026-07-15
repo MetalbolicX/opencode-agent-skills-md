@@ -44,6 +44,14 @@ const createMemFs = (initial: MemStore = {}): CliFs & { store: MemStore } => {
         .map((k) => k.slice(dir.length).split("/")[0]!);
     },
     existsSync: (path: string) => store[path] !== undefined,
+    rmdirSync: (path: string) => {
+      const dir = path.endsWith("/") ? path : path + "/";
+      for (const k of Object.keys(store)) {
+        if (k === path || k.startsWith(dir)) {
+          delete store[k];
+        }
+      }
+    },
   };
 };
 

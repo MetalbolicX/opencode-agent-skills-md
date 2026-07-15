@@ -75,6 +75,22 @@ const createMemFs = (opts: MemFsOpts = {}): CliFs & { __files: Map<string, strin
       return Array.from(entries);
     },
     existsSync: (path) => files.has(path) || dirs.has(path),
+    rmdirSync: (path) => {
+      dirs.delete(path);
+      // Remove all files under this directory
+      const prefix = path.endsWith("/") ? path : path + "/";
+      for (const key of files.keys()) {
+        if (key === path || key.startsWith(prefix)) {
+          files.delete(key);
+        }
+      }
+      // Remove subdirectories
+      for (const d of dirs.keys()) {
+        if (d === path || d.startsWith(prefix)) {
+          dirs.delete(d);
+        }
+      }
+    },
   };
   return fs;
 };
