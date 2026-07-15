@@ -38,7 +38,7 @@
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.17.18"
+    "@opencode-ai/plugin": "^1.18.1"
   },
   "devDependencies": {
     "@tsconfig/bun": "^1.0.10",
