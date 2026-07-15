@@ -23,7 +23,7 @@ import {
   resolveConfigDir,
 } from "./config";
 import { createRealFs } from "./real-fs";
-import { fetchLatestVersion, getInstalledVersion, isStale } from "./registry";
+import { fetchLatestVersion, getCachedPluginVersion, getInstalledVersion, isStale } from "./registry";
 
 // ---------------------------------------------------------------------------
 // Discovery root paths (the 4 places opencode looks for skills)
@@ -59,6 +59,8 @@ export interface StatusResult {
   extras: string[];
   installedVersion?: string | null;
   latestVersion?: string | null;
+  /** Version found in the OpenCode package cache (if any). Distinct from installedVersion. */
+  cachedVersion?: string | null;
 }
 
 export interface DoctorResult {
@@ -68,6 +70,8 @@ export interface DoctorResult {
   info: string[];
   installedVersion?: string | null;
   latestVersion?: string | null;
+  /** Version found in the OpenCode package cache (if any). Distinct from installedVersion. */
+  cachedVersion?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,10 +107,11 @@ export const runStatus = async (
   console.log(`PREFERENCE_MODE:  ${preference ?? "not set"}`);
   console.log(`DEBUG:             ${debug ?? "not set"}`);
 
-  // Probe both version sources in parallel.
-  const [installedVersion, latestVersion] = await Promise.all([
+  // Probe all three version sources in parallel.
+  const [installedVersion, latestVersion, cachedVersion] = await Promise.all([
     Promise.resolve(getInstalledVersion(fs)),
     fetchLatestVersion(),
+    Promise.resolve(getCachedPluginVersion(fs, env)),
   ]);
 
   if (pluginEntries.length === 0) {
@@ -119,6 +124,7 @@ export const runStatus = async (
       extras,
       installedVersion,
       latestVersion,
+      cachedVersion,
     };
   }
 
@@ -129,7 +135,10 @@ export const runStatus = async (
     console.log(`Other plugins:  ${extras.join(", ")}`);
   }
 
-  if (installedVersion != null && latestVersion != null) {
+  if (cachedVersion != null && latestVersion != null) {
+    console.log(`Cached version: ${cachedVersion}`);
+    console.log(`Latest:         ${latestVersion}`);
+  } else if (installedVersion != null && latestVersion != null) {
     console.log(`Installed version: ${installedVersion}`);
     console.log(`Latest:            ${latestVersion}`);
   }
@@ -142,6 +151,7 @@ export const runStatus = async (
     extras,
     installedVersion,
     latestVersion,
+    cachedVersion,
   };
 };
 
@@ -251,16 +261,20 @@ export const runDoctor = async (
     // best-effort — never block on permission probes
   }
 
-  // 7. Package freshness — probe both version sources in parallel.
-  const [installedVersion, latestVersion] = await Promise.all([
+  // 7. Package freshness — probe all version sources in parallel.
+  const [installedVersion, latestVersion, cachedVersion] = await Promise.all([
     Promise.resolve(getInstalledVersion(fs)),
     fetchLatestVersion(),
+    Promise.resolve(getCachedPluginVersion(fs, env)),
   ]);
 
-  if (isStale(installedVersion, latestVersion)) {
+  // Warn about stale cache — this is the source of truth for the running plugin.
+  // Use cachedVersion (not installedVersion) because the cache is what OpenCode
+  // actually uses at runtime, and it may lag behind the CLI's own version.
+  if (isStale(cachedVersion, latestVersion)) {
     warnings.push(
-      `opencode-agent-skills-md ${installedVersion ?? "(unknown)"} is stale — ` +
-        `run: npx opencode-agent-skills-md@latest install`,
+      `opencode-agent-skills-md cache ${cachedVersion ?? "(unknown)"} is stale — ` +
+        `run: oaskills update`,
     );
   }
 
@@ -276,5 +290,5 @@ export const runDoctor = async (
     console.log(`\n✗ Doctor: ${issues.length} issue(s) found`);
   }
 
-  return { ok, issues, warnings, info, installedVersion, latestVersion };
+  return { ok, issues, warnings, info, installedVersion, latestVersion, cachedVersion };
 };
