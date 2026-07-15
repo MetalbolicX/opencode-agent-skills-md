@@ -1,67 +1,93 @@
 // ---------------------------------------------------------------------------
 // src/cli/update.ts — `oaskills update` command.
 //
-// Detects whether the installed version is stale relative to the npm registry.
-// When stale, purges the runtime cache and prints the canonical update
-// instruction instead of auto-running install (per locked decision).
+// Rewritten for PR 2: update ALWAYS purges the runtime cache and re-registers
+// via `opencode plugin --global --force`. There is no staleness gate — every
+// `oaskills update` is a clean re-install. This guarantees the plugin cache
+// is always consistent with the latest published version.
 //
-// Does NOT execute the install command — it only detects + instructs.
+// Design (Option A from SDD design):
+//   - runUpdate MUST purge cache unconditionally — no staleness gate
+//   - runUpdate MUST spawn `opencode plugin opencode-agent-skills-md --global --force`
+//   - runUpdate signature: (fs, env, log, error, opts?) — full dependency injection
 // ---------------------------------------------------------------------------
 
-import { rmSync } from "node:fs";
-import { fetchLatestVersion, getInstalledVersion, isStale } from "./registry";
-import { cachePath } from "./uninstall";
+import { spawnOpencodePlugin, type SpawnFn } from "./spawn";
+import { purgeDirectory, resolveCachePaths } from "./cache";
+import type { CliFs } from "./config";
 
 export interface UpdateOptions {
   /** Plan the change and print it without writing. */
   dryRun?: boolean;
+  /** Override the latest version (for testing). */
+  latestVersion?: string;
+  /** Injected spawn function for tests. */
+  spawn?: SpawnFn;
 }
 
 export interface UpdateResult {
-  /** Outcome of the update check. */
-  status: "purged" | "planned" | "noop";
-  /** Cache path that was (or would be) purged. */
-  cachePath: string;
-  /** Instruction printed to stdout. Empty when noop. */
+  /** Outcome of the update — always 'stale' when update ran (even dry-run). */
+  status: "stale" | "noop";
+  /** Cache paths that were (or would be) purged. */
+  cachePaths: string[];
+  /** Instruction string — empty (replaced by spawn). */
   instruction: string;
 }
 
 /**
- * Check for updates. If stale, purge the runtime cache and print a
- * reinstall instruction. Never auto-runs install.
+ * Purge all resolved cache directories and re-register the plugin via
+ * `opencode plugin opencode-agent-skills-md --global --force`.
+ *
+ * This is unconditional — no staleness check, no version comparison.
+ * The user's cache is always wiped and the plugin is re-registered.
  */
 export const runUpdate = async (
+  fs: CliFs,
+  env: NodeJS.ProcessEnv,
+  log: (s: string) => void,
+  _error: (s: string) => void,
   opts: UpdateOptions = {},
 ): Promise<UpdateResult> => {
-  const installed = getInstalledVersion();
-  const latest = await fetchLatestVersion();
-
-  // If we can't determine the latest version, treat as noop.
-  if (latest === null) {
-    return { status: "noop", cachePath: cachePath(), instruction: "" };
-  }
-
-  if (!isStale(installed, latest)) {
-    console.log(`already current`);
-    return { status: "noop", cachePath: cachePath(), instruction: "" };
-  }
-
-  const path = cachePath();
+  const cachePaths = resolveCachePaths(env, fs);
+  const instruction = "opencode plugin opencode-agent-skills-md --global --force";
 
   if (opts.dryRun) {
-    console.log(`[dry-run] Would purge ${path}`);
-    return { status: "planned", cachePath: path, instruction: "" };
+    log(`oaskills: update check (dry-run)`);
+    log(`  would purge: ${cachePaths.join(", ") || "(none found)"}`);
+    log(`  would spawn: ${instruction}`);
+    return { status: "stale", cachePaths, instruction };
   }
 
-  // Purge the cache directory (best-effort, silent if missing).
-  try {
-    rmSync(path, { recursive: true, force: true });
-  } catch {
-    // Path didn't exist — that's fine, we still print the instruction.
+  // Purge each matching cache directory. Best-effort per path.
+  for (const cachePath of cachePaths) {
+    try {
+      if (fs.existsSync(cachePath)) {
+        purgeDirectory(fs, cachePath);
+        log(`oaskills: purged cache ${cachePath}`);
+      }
+    } catch {
+      // ignore individual purge failures — best-effort
+    }
   }
 
-  const instruction = `npx opencode-agent-skills-md@latest install`;
-  console.log(instruction);
+  log(
+    `oaskills: re-registering opencode-agent-skills-md`,
+  );
 
-  return { status: "purged", cachePath: path, instruction };
+  // Re-register via OpenCode's CLI. Failure here is fatal — surface it.
+  const spawnOpts = opts.spawn
+    ? { spawn: opts.spawn }
+    : {};
+  const result = await spawnOpencodePlugin(
+    ["opencode-agent-skills-md", "--global", "--force"],
+    spawnOpts,
+  );
+
+  if ((result.status ?? 0) !== 0) {
+    throw new Error(
+      `opencode plugin opencode-agent-skills-md --global --force exited with status ${String(result.status)}`,
+    );
+  }
+
+  return { status: "stale", cachePaths, instruction: "" };
 };
