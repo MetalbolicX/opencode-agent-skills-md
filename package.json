@@ -1,6 +1,6 @@
 {
   "name": "opencode-agent-skills-md",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "OpenCode plugin for agent skills — single-package Bun layout.",
   "type": "module",
   "main": "dist/src/plugin.js",
