@@ -2,9 +2,17 @@
  * run_skill_script tool factory.
  */
 
+import * as fs from "node:fs/promises";
 import type { Skill } from "../types";
 import type { ToolContext } from "@opencode-ai/plugin";
-import { _escapeShellArg, SKILL_SCRIPT_TIMEOUT_MS, runBoundSkillScript } from "./shared";
+import {
+  _escapeShellArg,
+  SKILL_SCRIPT_TIMEOUT_MS,
+  runBoundSkillScript,
+  scanScriptContent,
+  requestRiskApproval,
+} from "./shared";
+import { resolveSafeSkillFilePath } from "./read-skill-file";
 import { tool } from "@opencode-ai/plugin";
 
 export type SkillShellResult = {
@@ -68,13 +76,35 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
         return `Script "${args.script}" not found in skill "${skill.name}". Available scripts: ${available}`;
       }
 
+      // Resolve canonical path — must stay within skill.path
+      const canonicalPath = await resolveSafeSkillFilePath(skill.path, args.script);
+      if (canonicalPath === null) {
+        return `Invalid path: cannot access files outside skill directory.`;
+      }
+
+      // Read content once for scanning
+      let scriptContent: string;
+      try {
+        scriptContent = await fs.readFile(canonicalPath, "utf8");
+      } catch {
+        return `Script "${args.script}" not found in skill "${skill.name}".`;
+      }
+
+      // Scan for risky content
+      const report = scanScriptContent(scriptContent);
+      if (report.categories.length > 0) {
+        // Gate: ask for confirmation before executing risky script
+        // This only returns on approval; denial throws/aborts via framework
+        await requestRiskApproval(context, skill.name, args.script, report);
+      }
+
       try {
         const scriptArgs = (args.arguments || []).map(_escapeShellArg).join(" ");
         const result = await runBoundSkillScript(
-          shell`${script.absolutePath} ${scriptArgs}`.cwd(skill.path).text(),
+          shell`${canonicalPath} ${scriptArgs}`.cwd(skill.path).text(),
           context.abort,
           timeout,
-          script.absolutePath,
+          canonicalPath,
         );
         return result;
       } catch (error: unknown) {

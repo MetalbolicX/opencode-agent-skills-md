@@ -47,6 +47,53 @@ export interface ShellRecorder {
   calls: Array<{ cwd: string; command: string }>;
 }
 
+/** Records for a single context.ask() call */
+export interface AskRecord {
+  permission: string;
+  patterns: string[];
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Wraps a ToolContext to record all context.ask() calls.
+ * The recorded calls can be asserted in tests.
+ * If deny() is called on the returned object, subsequent ask() calls will throw,
+ * simulating a framework-level denial that aborts execution.
+ */
+export interface AskRecorder {
+  context: ToolContext;
+  records: AskRecord[];
+  /** Simulates framework denial: ask() will throw after recording. */
+  deny(): void;
+}
+
+export function createAskRecorder(): AskRecorder {
+  const records: AskRecord[] = [];
+  let shouldThrow = false;
+
+  return {
+    context: {
+      sessionID: "test-session",
+      messageID: "msg_test",
+      agent: "test",
+      directory: "/test",
+      worktree: "/test",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: async ({ permission, patterns, metadata }) => {
+        records.push({ permission, patterns: patterns ?? [], metadata: metadata ?? {} });
+        if (shouldThrow) {
+          throw new Error("ask() denied by framework");
+        }
+      },
+    } as ToolContext,
+    records,
+    deny() {
+      shouldThrow = true;
+    },
+  };
+}
+
 export async function createFixtureWorkspace(): Promise<FixtureWorkspace> {
   const root = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-fixture-"));
   const projectRoot = path.join(root, "project");
