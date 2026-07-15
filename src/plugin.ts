@@ -400,12 +400,6 @@ ${skillsNamespaceBlock}
 };
 
 
-// Type guard for chat text part — exported for unit testing
-export function isChatTextPart(part: unknown): part is { type?: string; text?: string; synthetic?: boolean } {
-  if (typeof part !== "object" || part === null) return false;
-  return (part as { type?: string }).type === "text";
-}
-
 export default {
   id: "opencode-agent-skills-md",
   server: SkillsPlugin,
