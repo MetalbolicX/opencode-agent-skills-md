@@ -199,7 +199,13 @@ export const runMain = async (
         return { command, exitCode: result.ok ? 0 : 1 };
       }
       case "update": {
-        await runUpdate({ dryRun: parsed.values["dry-run"] === true });
+        await runUpdate(
+          fs,
+          env,
+          (s) => console.log(s),
+          (s) => console.error(s),
+          { dryRun: parsed.values["dry-run"] === true },
+        );
         return { command, exitCode: 0 };
       }
       default:

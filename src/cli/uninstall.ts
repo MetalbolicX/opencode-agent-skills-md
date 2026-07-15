@@ -12,9 +12,6 @@
 // recursive directory removal.
 // ---------------------------------------------------------------------------
 
-import { rmSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
   backupIfWritable,
   type CliFs,
@@ -24,6 +21,7 @@ import {
   writeAtomically,
 } from "./config";
 import { createRealFs } from "./real-fs";
+import { purgeDirectory, resolveCachePaths } from "./cache";
 
 export interface UninstallOptions {
   /** Also remove the runtime cache directory. */
@@ -44,31 +42,6 @@ export interface UninstallResult {
 }
 
 const JSON_INDENT = 2;
-
-/** Resolve `$HOME` (or `os.homedir()` as last resort) for purge paths. */
-const homeRoot = (env: NodeJS.ProcessEnv = process.env): string => {
-  const home = env.HOME;
-  if (typeof home === "string" && home.trim().length > 0) return home;
-  return homedir();
-};
-
-/** Bun/npm-style cache path where the plugin gets installed at runtime. */
-export const cachePath = (env: NodeJS.ProcessEnv = process.env): string =>
-  join(homeRoot(env), ".cache", "opencode", "node_modules", "opencode-agent-skills-md");
-
-/**
- * Best-effort recursive delete. Returns the path on success or `null` when
- * the target was missing (we don't want to fail the whole command if the
- * user never ran `install` to create these dirs in the first place).
- */
-const purgeDir = (path: string): string | null => {
-  try {
-    rmSync(path, { recursive: true, force: true });
-    return path;
-  } catch {
-    return null;
-  }
-};
 
 export const runUninstall = (
   opts: UninstallOptions = {},
@@ -91,8 +64,8 @@ export const runUninstall = (
   const removed = existing.filter(matchesPlugin);
   const remaining = existing.filter((entry) => !removed.includes(entry));
 
-  // Compute purge candidates up front so dry-run can report them too.
-  const purgeCandidates = opts.purge ? [cachePath(env)] : [];
+  // Compute purge candidates from resolveCachePaths so dry-run can report them too.
+  const purgeCandidates = opts.purge ? resolveCachePaths(env, fs) : [];
   const purged: string[] = [];
   const plannedPurge: string[] = [];
 
@@ -100,8 +73,14 @@ export const runUninstall = (
     plannedPurge.push(...purgeCandidates);
   } else if (opts.purge) {
     for (const p of purgeCandidates) {
-      const result = purgeDir(p);
-      if (result) purged.push(result);
+      try {
+        if (fs.existsSync(p)) {
+          purgeDirectory(fs, p);
+          purged.push(p);
+        }
+      } catch {
+        // best-effort — purge failure is non-fatal
+      }
     }
   }
 
