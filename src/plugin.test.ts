@@ -750,58 +750,76 @@ describe("output.parts injection (no session.prompt())", () => {
   });
 });
 
-describe("OpencodeClientLike — B4 named interface", () => {
-  test("OpencodeClientLike is exported from plugin.ts", async () => {
-    const mod = await import("./plugin");
-    // OpencodeClientLike is a type-only export — verify it exists by using it in a type annotation
-    const client: mod.OpencodeClientLike = {};
-    assert.ok(client !== null && typeof client === "object", "OpencodeClientLike type must be usable");
-  });
+/**
+ * Regression test for the "file exists, plugin not loaded" gotcha.
+ *
+ * Symptom: `.opencode/plugins/skills.ts` was on disk but opencode never
+ * picked it up because `opencode.json` had no `plugin` entry. Skills in
+ * `.opencode/skills/` were invisible to the LLM. This test guards the
+ * core contract: a skill in `.opencode/skills/` MUST appear in the
+ * bootstrap `<available-skills>` block when the plugin boots against
+ * that workspace.
+ */
+describe("plugin boot — .opencode/skills/ discovery regression", () => {
+  test("skill in .opencode/skills/ appears in bootstrap <available-skills> block", async () => {
+    const { SkillsPlugin } = await loadPluginModule() as any;
 
-  test("OpencodeClientLike: client with session.messages returning valid data satisfies interface", async () => {
-    // This test verifies the shape that plugin.ts casts `client as OpencodeClientLike`
-    // The interface requires: session?.messages?.(input: {path: {id: string}}) => Promise<{data: ...}>
-    const { OpencodeClientLike } = await import("./plugin");
-    const validClient = {
-      session: {
-        messages: async (input: { path: { id: string } }) => {
-          return {
-            data: [
-              {
-                parts: [
-                  { type: "text", text: "<available-skills>- skill-a\n- skill-b</available-skills>" },
-                ],
-              },
-            ],
-          };
-        },
-      },
-    } satisfies (typeof OpencodeClientLike)["prototype"];
+    const workspace = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-boot-regression-"));
+    const skillDir = path.join(workspace, ".opencode", "skills", "greeting");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: greeting",
+        "description: a simple greeting skill",
+        "trigger: hello, greet, greeting",
+        "---",
+        "",
+        "# Greeting Skill",
+      ].join("\n"),
+      "utf8",
+    );
 
-    // If the satisfies passes TypeScript, the shape is valid
-    assert.ok(validClient.session?.messages !== undefined, "messages must be defined");
-  });
-
-  test("OpencodeClientLike: client with missing optional session field satisfies interface", async () => {
-    const { OpencodeClientLike } = await import("./plugin");
-    const noSessionClient = {};
-    // Optional fields must be allowed
-    assert.ok(noSessionClient !== null && typeof noSessionClient === "object", "empty object is valid");
-  });
-
-  test("OpencodeClientLike: client with session but no messages satisfies interface", async () => {
-    const { OpencodeClientLike } = await import("./plugin");
-    const noMessagesClient = { session: {} };
-    assert.ok(noMessagesClient !== null && typeof noMessagesClient === "object", "session without messages is valid");
-  });
-
-  test("OpencodeClientLike: messages returning empty data array satisfies interface", async () => {
-    const { OpencodeClientLike } = await import("./plugin");
-    const emptyDataClient = {
+    const client = {
       session: {
         messages: async () => ({ data: [] }),
+        prompt: async () => {},
       },
     };
-    assert.ok(emptyDataClient.session?.messages !== undefined, "messages must be callable");
+    const shell = Object.assign(
+      (strings: TemplateStringsArray, ...values: unknown[]) => ({
+        text: async () => "",
+      }),
+      { cwd: () => shell },
+    ) as any;
+
+    const plugin = await SkillsPlugin({ client, $: shell, shell, directory: workspace }) as any;
+
+    try {
+      // Plugin factory contract: must expose the opencode hooks.
+      assert.equal(typeof plugin["chat.message"], "function", "plugin must expose chat.message");
+      assert.equal(typeof plugin.event, "function", "plugin must expose event");
+
+      const output = {
+        message: { sessionID: "boot-regression", role: "user" as const },
+        parts: [] as Array<{ type?: string; text?: string; synthetic?: boolean }>,
+      };
+      await plugin["chat.message"]({}, output);
+
+      const combinedText = output.parts
+        .filter((p) => p.synthetic === true)
+        .map((p) => p.text ?? "")
+        .join("\n");
+
+      // Core regression assertion: greeting MUST be discoverable from .opencode/skills/.
+      assert.match(
+        combinedText,
+        /<available-skills>[\s\S]*- greeting:[\s\S]*<\/available-skills>/,
+        ".opencode/skills/greeting MUST appear in bootstrap <available-skills> block — failure here means the plugin is not discovering project-local skills",
+      );
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 });

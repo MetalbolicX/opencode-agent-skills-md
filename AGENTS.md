@@ -31,6 +31,11 @@ Single-package Bun layout under `src/`:
 - `run_skill_script` only runs executable files.
 - `OPENCODE_AGENT_SKILLS_SUPERPOWERS_MODE=true` enables the optional Superpowers bootstrap.
 
+## Local Plugin Installation
+- `bun run install-local` writes `.opencode/plugins/skills.ts` AND upserts the plugin entry in `.opencode/opencode.json`.
+- The config entry is required — without it opencode silently ignores the plugin file and `.opencode/skills/` skills never reach the LLM.
+- If a skill defined in `.opencode/skills/` is missing from the bootstrap `<available-skills>` block, the first thing to check is whether `.opencode/opencode.json` lists the plugin.
+
 ## Task Tracking
 - Use **bd (beads)** for all issue/task tracking; do not create markdown TODO lists.
 - Commit `.beads/issues.jsonl` with code changes when issue state changes.

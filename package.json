@@ -33,8 +33,8 @@
     "build": "tsc && bun run build:cli",
     "build:cli": "bun run scripts/build-cli.ts",
     "clean": "rm -rf dist",
-    "install-local": "mkdir -p .opencode/plugins && printf 'import { SkillsPlugin } from \"../../src/plugin.ts\";\n' > .opencode/plugins/skills.ts",
-    "status": "ls -la .opencode/plugins/skills.ts 2>/dev/null || echo Not installed",
+    "install-local": "mkdir -p .opencode/plugins && cat > .opencode/plugins/skills.ts <<'EOF'\nimport { SkillsPlugin } from \"../../src/plugin.ts\";\nexport default {\n  id: \"opencode-agent-skills-md\",\n  server: SkillsPlugin,\n};\nEOF\nbun -e \"import {readFileSync,writeFileSync} from 'fs'; const p='.opencode/opencode.json'; const c=JSON.parse(readFileSync(p,'utf-8')); const e='./.opencode/plugins/skills.ts'; c.plugin=Array.isArray(c.plugin)?c.plugin:[]; if(!c.plugin.includes(e))c.plugin.push(e); writeFileSync(p,JSON.stringify(c,null,2)+'\\n')\"",
+    "status": "ls -la .opencode/plugins/skills.js 2>/dev/null || echo Not installed",
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
