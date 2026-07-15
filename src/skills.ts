@@ -133,9 +133,14 @@ export const discoverAllSkills = async (
   ]);
   allResults.push(...pluginResults, ...marketplaceResults);
 
+  const parsed = await Promise.all(
+    allResults.map(({ filePath, relativePath, label }) =>
+      parseSkillFile(filePath, relativePath, label)
+    )
+  );
+
   const skillsByName = new Map<string, Skill>();
-  for (const { filePath, relativePath, label } of allResults) {
-    const skill = await parseSkillFile(filePath, relativePath, label);
+  for (const skill of parsed) {
     if (!skill) continue;
     if (skillsByName.has(skill.name)) {
       onDuplicate(skillsByName.get(skill.name)!, skill);
@@ -189,25 +194,3 @@ export { renderSkillPreflightBlock } from "./preference";
 
 // Re-export formatting helpers for consumers that still import from skills.ts
 export { renderAvailableSkillsBlock } from "./preference";
-
-// Module-level TTL cache for getSkillSummaries (C4)
-const SUMMARY_CACHE_TTL_MS = 5 * 1000; // 5 seconds — mirrors DEFAULT_CACHE_TTL_MS
-let _summaryCache: { result: Array<{ name: string; description: string; trigger?: string }>; timestamp: number } | null = null;
-
-/**
- * Get summaries of all available skills.
- * Results are cached with the same TTL as the SkillStore discovery cache (C4).
- */
-export const getSkillSummaries = async (directory: string): Promise<Array<{ name: string; description: string; trigger?: string }>> => {
-  if (_summaryCache && Date.now() - _summaryCache.timestamp < SUMMARY_CACHE_TTL_MS) {
-    return _summaryCache.result;
-  }
-  const skillsByName = await discoverAllSkills(directory);
-  const result = Array.from(skillsByName.values()).map(skill => ({
-    name: skill.name,
-    description: skill.description,
-    trigger: skill.trigger,
-  }));
-  _summaryCache = { result, timestamp: Date.now() };
-  return result;
-};

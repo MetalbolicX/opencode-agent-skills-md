@@ -12,10 +12,18 @@ test:
 typecheck:
     tsc --noEmit
 
+# Build the TypeScript plugin (tsc emit)
+build:
+    bun run build
+
+# Bundle the CLI entrypoint (bun build + shebang)
+build-cli:
+    bun run scripts/build-cli.ts
+
 # Install local plugin for development
 install-local:
     mkdir -p .opencode/plugins
-    echo 'export { SkillsPlugin } from "./src/plugin.ts";' > .opencode/plugins/skills.js
+    printf 'import { SkillsPlugin } from "../../src/plugin.ts";\n' > .opencode/plugins/skills.ts
 
 # Check if local plugin is installed
 status:

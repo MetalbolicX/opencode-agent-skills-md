@@ -13,10 +13,10 @@ import { after, before, describe, test } from "node:test";
 import type { Skill } from "./types";
 
 /**
- * `getSkillSummaries` is the preflight path that builds the list of
+ * `store.summaries()` is the preflight path that builds the list of
  * `SkillSummary` records the plugin feeds into the keyword matcher.
  */
-describe("getSkillSummaries trigger passthrough", () => {
+describe("store.summaries() trigger passthrough", () => {
   let workspace: string;
 
   before(async () => {
@@ -62,8 +62,9 @@ describe("getSkillSummaries trigger passthrough", () => {
   });
 
   test("threads `trigger` through to SkillSummary when present", async () => {
-    const { getSkillSummaries } = await import("./skills");
-    const summaries = await getSkillSummaries(workspace);
+    const { createSkillStore } = await import("./skill-store");
+    const store = createSkillStore(workspace);
+    const summaries = await store.summaries();
 
     const withTrigger = summaries.find((s) => s.name === "with-trigger");
     assert.ok(withTrigger, "with-trigger summary is present");
@@ -71,8 +72,9 @@ describe("getSkillSummaries trigger passthrough", () => {
   });
 
   test("leaves `trigger` undefined when the skill has no trigger key", async () => {
-    const { getSkillSummaries } = await import("./skills");
-    const summaries = await getSkillSummaries(workspace);
+    const { createSkillStore } = await import("./skill-store");
+    const store = createSkillStore(workspace);
+    const summaries = await store.summaries();
 
     const noTrigger = summaries.find((s) => s.name === "no-trigger");
     assert.ok(noTrigger, "no-trigger summary is present");

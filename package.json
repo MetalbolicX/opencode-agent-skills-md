@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/src/plugin.js",
   "types": "dist/src/plugin.d.ts",
+  "bin": {
+    "oaskills": "./dist/cli.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/src/plugin.d.ts",
@@ -27,15 +30,15 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc && bun run build:cli",
+    "build:cli": "bun run scripts/build-cli.ts",
     "clean": "rm -rf dist",
-    "install-local": "mkdir -p .opencode/plugins && printf 'import { SkillsPlugin } from \"../../src/plugin.ts\";\\nexport default { id: \"opencode-agent-skills-md\", server: SkillsPlugin };\\n' > .opencode/plugins/skills.ts",
+    "install-local": "mkdir -p .opencode/plugins && printf 'import { SkillsPlugin } from \"../../src/plugin.ts\";\n' > .opencode/plugins/skills.ts",
     "status": "ls -la .opencode/plugins/skills.ts 2>/dev/null || echo Not installed",
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.17.18",
-    "yaml": "^2.9.0"
+    "@opencode-ai/plugin": "^1.17.18"
   },
   "devDependencies": {
     "@tsconfig/bun": "^1.0.10",
@@ -44,7 +47,8 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": ">=1.0.0",
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
