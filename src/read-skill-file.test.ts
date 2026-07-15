@@ -17,7 +17,7 @@ import { createMockToolContext } from "./test-helpers";
 // MockSkillStore
 // ---------------------------------------------------------------------------
 
-function createMockSkillStore(skills: Skill[]): SkillStore {
+const createMockSkillStore = (skills: Skill[]): SkillStore => {
   const byName = new Map<string, Skill>(skills.map((s) => [s.name, s]));
   return {
     async all() { return skills; },
@@ -31,7 +31,7 @@ function createMockSkillStore(skills: Skill[]): SkillStore {
     invalidate() {},
     async listFiles(_skillName: string): Promise<string[]> { return []; },
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Minimal shell stub (satisfies createSkillTools guard)

@@ -20,13 +20,13 @@ import {
   PREFERENCE_TOOL_IDS,
 } from "./preference-hooks";
 
-function makeSummary(overrides: Partial<SkillSummary> = {}): SkillSummary {
+const makeSummary = (overrides: Partial<SkillSummary> = {}): SkillSummary => {
   return {
     name: "default-skill",
     description: "default description",
     ...overrides,
   };
-}
+};
 
 const ENV_VAR = "OPENCODE_AGENT_SKILLS_PREFERENCE_MODE";
 const PREVIOUS_ENV = process.env[ENV_VAR];

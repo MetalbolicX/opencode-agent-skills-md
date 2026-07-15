@@ -117,12 +117,12 @@ export interface ChatMessageOutput {
 }
 
 // Type guard for chat text part — exported for unit testing
-export function isChatTextPart(
+export const isChatTextPart = (
   part: unknown,
-): part is { type?: string; text?: string; synthetic?: boolean } {
+): part is { type?: string; text?: string; synthetic?: boolean } => {
   if (typeof part !== "object" || part === null) return false;
   return (part as { type?: string }).type === "text";
-}
+};
 
 /**
  * Append a synthetic text part to the chat.message output.

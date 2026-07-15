@@ -27,7 +27,7 @@ export interface ScriptRiskReport {
  * Scan script content for risky operations.
  * Returns matched categories and supporting evidence lines.
  */
-export function scanScriptContent(content: string): ScriptRiskReport {
+export const scanScriptContent = (content: string): ScriptRiskReport => {
   const categories: RiskCategory[] = [];
   const evidence: string[] = [];
   const lines = content.split("\n");
@@ -70,12 +70,12 @@ export function scanScriptContent(content: string): ScriptRiskReport {
  * This function only returns on approval; denial is handled by the framework throwing/aborting.
  * The caller must not assume execution proceeds after this returns.
  */
-export async function requestRiskApproval(
+export const requestRiskApproval = async (
   context: ToolContext,
   skillName: string,
   scriptPath: string,
   report: ScriptRiskReport,
-): Promise<void> {
+): Promise<void> => {
   await context.ask({
     permission: `run-skill-script:${skillName}/${scriptPath}`,
     patterns: report.categories as string[],

@@ -44,10 +44,10 @@ export interface SpawnOpencodePluginOptions {
  * The default spawn uses async `spawn` with a 30-second SIGKILL timer so
  * the call never blocks the CLI indefinitely even when the opencode CLI hangs.
  */
-export async function spawnOpencodePlugin(
+export const spawnOpencodePlugin = async (
   args: string[],
   opts: SpawnOpencodePluginOptions = {},
-): Promise<SpawnResult> {
+): Promise<SpawnResult> => {
   const env = opts.env ?? process.env;
   const stdio = opts.stdio ?? "inherit";
   const spawnFn = opts.spawn ?? defaultSpawn;
@@ -73,11 +73,11 @@ export async function spawnOpencodePlugin(
  * kill timer fires after 30 s to ensure the opencode CLI never hangs the
  * CLI indefinitely.
  */
-async function defaultSpawn(
+const defaultSpawn = async (
   command: string,
   args: string[],
   options: SpawnOptions,
-): Promise<SpawnResult> {
+): Promise<SpawnResult> => {
   const { spawn } = await import("node:child_process");
   const stdio = options.stdio ?? "pipe";
 

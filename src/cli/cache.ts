@@ -29,16 +29,16 @@ export const CACHE_DIR_BASENAME = "opencode-agent-skills-md";
  * Resolve the user's home directory, honoring a custom HOME env var.
  * Used by both resolveCachePaths and the config loader.
  */
-export function resolveHome(env: NodeJS.ProcessEnv = process.env): string {
+export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string => {
   return env.HOME ?? homedir();
-}
+};
 
 /**
  * Return the absolute path of the OpenCode packages cache directory.
  */
-export function resolvePackagesDir(env: NodeJS.ProcessEnv = process.env): string {
+export const resolvePackagesDir = (env: NodeJS.ProcessEnv = process.env): string => {
   return join(resolveHome(env), ...PACKAGES_DIR_BASENAME);
-}
+};
 
 /**
  * Return the cache directories that match the opencode-agent-skills-md prefix.
@@ -53,10 +53,10 @@ export function resolvePackagesDir(env: NodeJS.ProcessEnv = process.env): string
  * directory and filter; without one we return the two most common shapes
  * so callers can pre-check existence cheaply.
  */
-export function resolveCachePaths(
+export const resolveCachePaths = (
   env: NodeJS.ProcessEnv = process.env,
   fs?: CliFs,
-): string[] {
+): string[] => {
   const packagesDir = resolvePackagesDir(env);
   if (fs && fs.existsSync(packagesDir)) {
     try {
@@ -78,7 +78,7 @@ export function resolveCachePaths(
     join(packagesDir, CACHE_DIR_BASENAME),
     join(packagesDir, `${CACHE_DIR_BASENAME}@latest`),
   ];
-}
+};
 
 // ---------------------------------------------------------------------------
 // Recursive purge
@@ -88,7 +88,7 @@ export function resolveCachePaths(
  * Recursively delete a directory and all its contents using the injected fs.
  * Best-effort — a failed purge is not fatal; we want the update to keep going.
  */
-export function purgeDirectory(fs: CliFs, dirPath: string): void {
+export const purgeDirectory = (fs: CliFs, dirPath: string): void => {
   let entries: string[] = [];
   try {
     entries = fs.readdirSync(dirPath);
@@ -125,4 +125,4 @@ export function purgeDirectory(fs: CliFs, dirPath: string): void {
   } catch {
     // best-effort
   }
-}
+};

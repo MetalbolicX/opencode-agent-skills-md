@@ -10,12 +10,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { SkillSummary } from "./types";
 
-function makeSkillSummary(overrides: Partial<SkillSummary> & { name: string }): SkillSummary {
+const makeSkillSummary = (overrides: Partial<SkillSummary> & { name: string }): SkillSummary => {
   return {
     description: "default description",
     ...overrides,
   };
-}
+};
 
 describe("Matcher — lazy initialization", () => {
   test("matcher.match returns relevant skills ranked by name match before init() is called", async () => {

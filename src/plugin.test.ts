@@ -22,7 +22,7 @@ type PluginModule = {
   isChatTextPart: (part: unknown) => boolean;
 };
 
-async function loadPluginModule(): Promise<PluginModule & { SkillsPlugin: unknown }> {
+const loadPluginModule = async (): Promise<PluginModule & { SkillsPlugin: unknown }> => {
   const [plugin, match, preference] = await Promise.all([
     import("./plugin"),
     import("./match"),
@@ -34,7 +34,7 @@ async function loadPluginModule(): Promise<PluginModule & { SkillsPlugin: unknow
     isChatTextPart: plugin.isChatTextPart,
     SkillsPlugin: plugin.SkillsPlugin,
   } as unknown as PluginModule & { SkillsPlugin: unknown };
-}
+};
 
 describe("matchSkillsByKeyword", () => {
   test("trigger match (1.5x) outranks description match (1x) at the same query", async () => {
@@ -301,7 +301,7 @@ describe("diagnostics and SDK shapes", () => {
     return { shell, calls };
   };
 
-  async function makePlugin() {
+  const makePlugin = async () => {
     const { SkillsPlugin } = await import("./plugin");
     const client = createMockOpencodeClient();
     const shell = createShellRecorder();
@@ -311,7 +311,7 @@ describe("diagnostics and SDK shapes", () => {
       directory: "/fake/project/root",
     } as any) as any;
     return { plugin, client };
-  }
+  };
 
   test("chat.message with undefined output degrades gracefully (no throw, no prompts)", async () => {
     const { plugin, client } = await makePlugin();

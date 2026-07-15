@@ -19,7 +19,7 @@ import { createMockToolContext } from "./test-helpers";
 // To scan a specific directory's .opencode/skills/ directly, we MUST pass explicit roots.
 // ---------------------------------------------------------------------------
 
-function findProjectRoot(from: string): string {
+const findProjectRoot = (from: string): string => {
   let dir = from;
   for (let i = 0; i < 5; i++) {
     const prev = dir;
@@ -33,7 +33,7 @@ function findProjectRoot(from: string): string {
     }
   }
   return require("node:path").dirname(require("node:path").dirname(from));
-}
+};
 
 const REPO_ROOT = findProjectRoot(import.meta.dirname);
 const PROJECT_SKILLS = REPO_ROOT + "/.opencode/skills";

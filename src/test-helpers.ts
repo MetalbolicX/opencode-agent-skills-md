@@ -67,7 +67,7 @@ export interface AskRecorder {
   deny(): void;
 }
 
-export function createAskRecorder(): AskRecorder {
+export const createAskRecorder = (): AskRecorder => {
   const records: AskRecord[] = [];
   let shouldThrow = false;
 
@@ -94,7 +94,7 @@ export function createAskRecorder(): AskRecorder {
   };
 }
 
-export async function createFixtureWorkspace(): Promise<FixtureWorkspace> {
+export const createFixtureWorkspace = async (): Promise<FixtureWorkspace> => {
   const root = await mkdtemp(path.join(tmpdir(), "opencode-agent-skills-md-fixture-"));
   const projectRoot = path.join(root, "project");
   const homeRoot = path.join(root, "home");
@@ -136,7 +136,7 @@ export async function createFixtureWorkspace(): Promise<FixtureWorkspace> {
   };
 }
 
-export function createMockOpencodeClient(initialMessages: unknown[] = []): MockOpencodeClient {
+export const createMockOpencodeClient = (initialMessages: unknown[] = []): MockOpencodeClient => {
   const prompts: PromptRecord[] = [];
 
   return {
@@ -153,7 +153,7 @@ export function createMockOpencodeClient(initialMessages: unknown[] = []): MockO
   };
 }
 
-export function createMockToolContext(sessionID: string = "test-session"): ToolContext {
+export const createMockToolContext = (sessionID: string = "test-session"): ToolContext => {
   return {
     sessionID,
     messageID: "msg_test",
@@ -166,7 +166,7 @@ export function createMockToolContext(sessionID: string = "test-session"): ToolC
   } as ToolContext;
 }
 
-export function createShellRecorder(): ShellRecorder {
+export const createShellRecorder = (): ShellRecorder => {
   const calls: Array<{ cwd: string; command: string }> = [];
   let currentCwd = "";
 

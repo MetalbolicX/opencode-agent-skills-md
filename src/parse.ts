@@ -30,7 +30,7 @@ export interface SkillFrontmatter {
  *   - validateFrontmatter type guards catch wrong types (non-string names, etc.)
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function parseYamlFrontmatter(text: string): Record<string, unknown> {
+export const parseYamlFrontmatter = (text: string): Record<string, unknown> => {
   if (text.trim().length === 0) return {};
   try {
     // Try strict JSON first (quoted keys and string values)
@@ -39,9 +39,9 @@ export function parseYamlFrontmatter(text: string): Record<string, unknown> {
   } catch {
     return manualParse(text);
   }
-}
+};
 
-function manualParse(text: string): Record<string, unknown> {
+const manualParse = (text: string): Record<string, unknown> => {
   const obj: Record<string, unknown> = {};
   const lines = text.split('\n');
 
@@ -124,9 +124,9 @@ function manualParse(text: string): Record<string, unknown> {
   // Flush any remaining pending nested
   flushNested();
   return obj;
-}
+};
 
-function parseArrayItems(inner: string): Array<unknown> {
+const parseArrayItems = (inner: string): Array<unknown> => {
   const items: Array<unknown> = [];
   let current = '';
   let depth = 0;
@@ -151,9 +151,9 @@ function parseArrayItems(inner: string): Array<unknown> {
   const t = current.trim();
   if (t) items.push(parseScalar(t));
   return items;
-}
+};
 
-function parseInlineObject(inner: string): Record<string, unknown> {
+const parseInlineObject = (inner: string): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
   let current = '';
   let depth = 0;
@@ -188,9 +188,9 @@ function parseInlineObject(inner: string): Record<string, unknown> {
     }
   }
   return result;
-}
+};
 
-function parseScalar(value: string): unknown {
+const parseScalar = (value: string): unknown => {
   const t = value.trim();
   if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
     return t.slice(1, -1);
@@ -203,7 +203,7 @@ function parseScalar(value: string): unknown {
     return num;
   }
   return t;
-}
+};
 
 // Kebab-case: lowercase letters, digits, and hyphens only — no uppercase
 const NAME_REGEX = /^[a-z0-9][\w-]*$/;

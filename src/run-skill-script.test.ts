@@ -24,7 +24,7 @@ import type { Skill, SkillStore } from "./types";
 // MockSkillStore
 // ---------------------------------------------------------------------------
 
-function createMockSkillStore(skills: Skill[]): SkillStore {
+const createMockSkillStore = (skills: Skill[]): SkillStore => {
   const byName = new Map<string, Skill>(skills.map((s) => [s.name, s]));
   return {
     async all() { return skills; },
@@ -38,13 +38,13 @@ function createMockSkillStore(skills: Skill[]): SkillStore {
     invalidate() {},
     async listFiles(_skillName: string): Promise<string[]> { return []; },
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Shell recorder that tracks cwd state per-call
 // ---------------------------------------------------------------------------
 
-function createShellRecorder() {
+const createShellRecorder = () => {
   const calls: Array<{ cwd: string; command: string }> = [];
   let shellCwd = "";
 
@@ -77,7 +77,7 @@ function createShellRecorder() {
   }) as typeof shell;
 
   return { shell, calls };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Fixture skills
