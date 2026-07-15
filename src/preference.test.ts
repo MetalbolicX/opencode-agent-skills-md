@@ -153,6 +153,35 @@ describe("renderAvailableSkillsBlock", () => {
     assert.ok(result.includes("run_skill_script"));
     assert.ok(result.includes("get_available_skills"));
   });
+
+  test("never instructs agents to call use_skill (model-switching guard)", () => {
+    const skills: Skill[] = [
+      { name: "git-helper", description: "Git assistance", path: "/g", relativePath: "g", label: "project", scripts: [], template: "", tags: [] },
+      { name: "test-skill", description: "Testing utilities", path: "/t", relativePath: "t", label: "project", scripts: [], template: "", tags: [] },
+    ];
+    const summaries: SkillSummary[] = [
+      { name: "git-helper", description: "Git assistance", trigger: "git" },
+      { name: "test-skill", description: "Testing utilities", trigger: "test" },
+    ];
+
+    const blocks = [
+      renderSkillPreferenceSystemBlock(summaries),
+      renderSkillPreflightBlock(summaries),
+      renderAvailableSkillsBlock(skills),
+      formatMatchedSkillsInjection(summaries),
+    ];
+
+    for (const block of blocks) {
+      assert.ok(
+        !block.includes("use_skill(\""),
+        `Generated text must not reference use_skill("...") — see preference.ts BOUNDARY comment (OpenCode issue #4475). Block:\n${block}`,
+      );
+      assert.ok(
+        !block.includes("Call use_skill"),
+        `Generated text must not say "Call use_skill" — see preference.ts BOUNDARY comment (OpenCode issue #4475). Block:\n${block}`,
+      );
+    }
+  });
 });
 
 describe("formatMatchedSkillsInjection", () => {

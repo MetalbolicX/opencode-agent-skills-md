@@ -1,6 +1,6 @@
 {
   "name": "opencode-agent-skills-md",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "OpenCode plugin for agent skills — single-package Bun layout.",
   "type": "module",
   "main": "dist/src/plugin.js",
@@ -38,7 +38,7 @@
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.18.1"
+    "@opencode-ai/plugin": "^1.18.2"
   },
   "devDependencies": {
     "@tsconfig/bun": "^1.0.10",

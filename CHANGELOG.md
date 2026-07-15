@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.1] - 2026-07-15
+
+### Fixed
+- **Reverted incorrect `use_skill` rename in preference layer.** The plugin's generated instruction text (`<skill-preference-policy>`, `<available-skills>`, `<skill-preflight>`, `<skill-evaluation-required>`, native-tool description note) was changed to instruct agents to call `use_skill("name")`. This reintroduced a model-switching vector: OpenCode's native `use_skill` loader triggers `session.prompt()` internally, which always calls `setAgentModel()` and flips the TUI's agent/model selector mid-session (OpenCore issue #4475). Restored `skill("name")` references throughout, matching the deliberate fix from commits `35f8922` and `1368166`.
+- Added BOUNDARY comment in `src/preference.ts` documenting why instruction text must use `skill` and never `use_skill`.
+- Added regression tests asserting generated preference text never contains `use_skill("` or `Call use_skill` (preference.test.ts and preference-hooks.test.ts).
+
+### Migration
+- Users who installed a previous version that emitted `use_skill` references and experienced agent/model switching should run `oaskills update` to purge stale Bun/npm caches, then reinstall. The fix itself is already present in 1.6.0 source; 1.6.1 only guarantees the published tarball matches it.
+
+<!--
+## [${version}]
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

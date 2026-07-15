@@ -3,6 +3,27 @@
  *
  * Mirrors packages/core/src/preference.ts behaviour.
  * No host dependencies.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ * BOUNDARY: instruction text references `skill`, never `use_skill`.
+ * ─────────────────────────────────────────────────────────────────────
+ * OpenCode exposes both `skill` (returns content as a tool result) and
+ * `use_skill` (legacy loader). The legacy `use_skill` path triggers
+ * `session.prompt()` internally, which always calls `setAgentModel()`
+ * and flips the TUI's agent/model selector mid-session.
+ *
+ * This is OpenCode server issue #4475 — the plugin cannot fix it. The
+ * safe workaround is to steer agents toward `skill`, which returns
+ * skill content as a tool result without going through `session.prompt()`.
+ *
+ * See commit 35f8922 ("fix(injection): eliminate session.prompt() calls
+ * that flip agent/model selector") for the original diagnosis and
+ * commit 1368166 ("refactor(plugin): remove plugin's skill tool,
+ * delegate to native") for the current architecture.
+ *
+ * DO NOT change `skill` → `use_skill` in the strings below without
+ * confirming issue #4475 is resolved upstream.
+ * ─────────────────────────────────────────────────────────────────────
  */
 
 import type { Skill, SkillSummary } from "./types";

@@ -265,3 +265,16 @@ describe("isPreferenceLayerEnabled", () => {
     assert.equal(isPreferenceLayerEnabled(), true);
   });
 });
+
+describe("NATIVE_TOOL_PREFERENCE_NOTE (model-switching guard)", () => {
+  test("does not reference use_skill (OpenCode issue #4475)", () => {
+    assert.ok(
+      !NATIVE_TOOL_PREFERENCE_NOTE.includes("use_skill"),
+      `NATIVE_TOOL_PREFERENCE_NOTE must not reference use_skill — see preference.ts BOUNDARY comment. Got: ${NATIVE_TOOL_PREFERENCE_NOTE}`,
+    );
+    assert.ok(
+      NATIVE_TOOL_PREFERENCE_NOTE.includes('skill("'),
+      "NATIVE_TOOL_PREFERENCE_NOTE should reference skill(\"...\") instead",
+    );
+  });
+});
