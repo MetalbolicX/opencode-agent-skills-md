@@ -46,7 +46,9 @@ export const createSkillStore = (
         return cache.inflight;
       }
       debugLog("[skill-store] cache miss — scanning discovery roots");
-      // Pass roots only if non-empty; otherwise discoverAllSkills uses its default roots
+      // Pass roots only if explicitly provided; otherwise discoverAllSkills uses its
+      // default roots. Empty array [] means "scan nothing additional" — only the
+      // directory's built-in roots should be used. Undefined means use defaults.
       let resolveInflight: (v: Map<string, Skill>) => void;
       let rejectInflight: (e: Error) => void;
       const inflight = new Promise<Map<string, Skill>>((resolve, reject) => {

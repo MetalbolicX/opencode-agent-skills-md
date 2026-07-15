@@ -77,10 +77,14 @@ export const createRunSkillScript = (deps: RunSkillScriptDeps) => {
       }
 
       // Resolve canonical path — must stay within skill.path
-      const canonicalPath = await resolveSafeSkillFilePath(skill.path, args.script);
-      if (canonicalPath === null) {
-        return `Invalid path: cannot access files outside skill directory.`;
+      const pathResult = await resolveSafeSkillFilePath(skill.path, args.script);
+      if (!pathResult.ok) {
+        if (pathResult.reason === "traversal") {
+          return `Invalid path: cannot access files outside skill directory.`;
+        }
+        return `Script "${args.script}" not found in skill "${skill.name}".`;
       }
+      const canonicalPath = pathResult.path;
 
       // Read content once for scanning
       let scriptContent: string;

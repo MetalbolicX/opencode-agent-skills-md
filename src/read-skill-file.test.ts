@@ -66,32 +66,43 @@ describe("resolveSafeSkillFilePath", () => {
   test("blocks traversal with ../ prefix (Unix-style)", async () => {
     const skillPath = "/project/.opencode/skills/test-skill";
     const result = await resolveSafeSkillFilePath(skillPath, "../../../etc/passwd");
-    assert.equal(result, null, "traversal must be blocked");
+    assert.equal(result.ok, false, "traversal must be blocked");
+    assert.equal(result.reason, "traversal");
   });
 
   test("blocks traversal with backslash prefix (Windows-style attempted escape)", async () => {
     const skillPath = "/project/.opencode/skills/test-skill";
     const result = await resolveSafeSkillFilePath(skillPath, "..\\..\\..\\etc\\passwd");
-    assert.equal(result, null, "Windows-style traversal must be blocked");
+    assert.equal(result.ok, false, "Windows-style traversal must be blocked");
+    // On Linux, backslash is a literal char not a separator, so this path doesn't
+    // syntactically escape. The realpath check returns not_found (non-existent).
+    // On Windows, this would be traversal. Covered by integration test on real paths.
+    assert.equal(result.reason, "not_found");
   });
 
   test("blocks traversal using absolute path that escapes skill directory", async () => {
     const skillPath = "/project/.opencode/skills/test-skill";
     const result = await resolveSafeSkillFilePath(skillPath, "/etc/passwd");
-    assert.equal(result, null, "absolute path escape must be blocked");
+    assert.equal(result.ok, false, "absolute path escape must be blocked");
+    assert.equal(result.reason, "traversal");
   });
 
   test("allows files within skill directory", async () => {
     const skillPath = "/project/.opencode/skills/test-skill";
     const result = await resolveSafeSkillFilePath(skillPath, "readme.md");
-    // Result is null if file doesn't exist (realpath fails) but path is safe
-    assert.notEqual(result, "/project/.opencode/skills/../../../etc/passwd");
+    // Result is not_found if file doesn't exist but path is safe; ok if it does
+    if (result.ok) {
+      assert.ok(result.path.endsWith("readme.md"), "safe path should end with readme.md");
+    } else {
+      assert.equal(result.reason, "not_found");
+    }
   });
 
   test("blocks null byte injection", async () => {
     const skillPath = "/project/.opencode/skills/test-skill";
     const result = await resolveSafeSkillFilePath(skillPath, "readme.md\0evil");
-    assert.equal(result, null, "null byte injection must be blocked");
+    assert.equal(result.ok, false, "null byte injection must be blocked");
+    assert.equal(result.reason, "not_found");
   });
 });
 

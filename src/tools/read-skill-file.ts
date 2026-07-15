@@ -18,24 +18,45 @@ export interface ReadSkillFileDeps {
 }
 
 /**
+ * Result of safe path resolution — distinguishes traversal from missing file.
+ */
+export type SafePathResult =
+  | { ok: true; path: string }
+  | { ok: false; reason: "traversal" | "not_found" };
+
+/**
  * Resolve a file path safely — must stay within skillPath.
- * Returns the realpath on success, null on traversal or error.
+ * Returns { ok: true, path } on success.
+ * Returns { ok: false, reason: "traversal" } if path escapes skillPath.
+ * Returns { ok: false, reason: "not_found" } if file does not exist.
  */
 export const resolveSafeSkillFilePath = async (
   skillPath: string,
   filename: string,
-): Promise<string | null> => {
-  const resolved = path.join(skillPath, filename);
-  try {
-    const resolvedReal = await fs.realpath(resolved);
-    const baseReal = await fs.realpath(skillPath);
-    if (resolvedReal === baseReal || resolvedReal.startsWith(baseReal + path.sep)) {
-      return resolvedReal;
-    }
-    return null;
-  } catch {
-    return null;
+): Promise<SafePathResult> => {
+  if (path.isAbsolute(filename)) {
+    return { ok: false, reason: "traversal" };
   }
+  const resolved = path.normalize(path.join(skillPath, filename));
+  if (!resolved.startsWith(skillPath + path.sep) && resolved !== skillPath) {
+    return { ok: false, reason: "traversal" };
+  }
+  let baseReal: string;
+  try {
+    baseReal = await fs.realpath(skillPath);
+  } catch {
+    return { ok: false, reason: "not_found" };
+  }
+  let resolvedReal: string;
+  try {
+    resolvedReal = await fs.realpath(resolved);
+  } catch {
+    return { ok: false, reason: "not_found" };
+  }
+  if (resolvedReal === baseReal || resolvedReal.startsWith(baseReal + path.sep)) {
+    return { ok: true, path: resolvedReal };
+  }
+  return { ok: false, reason: "traversal" };
 };
 
 export const createReadSkillFile = (deps: ReadSkillFileDeps) => {
@@ -60,10 +81,14 @@ export const createReadSkillFile = (deps: ReadSkillFileDeps) => {
         return `Skill "${args.skill}" not found. Use get_available_skills to list available skills.`;
       }
 
-      const canonicalPath = await resolveSafeSkillFilePath(skill.path, args.filename);
-      if (canonicalPath === null) {
-        return `Invalid path: cannot access files outside skill directory.`;
+      const canonicalPathResult = await resolveSafeSkillFilePath(skill.path, args.filename);
+      if (!canonicalPathResult.ok) {
+        if (canonicalPathResult.reason === "traversal") {
+          return `Invalid path: cannot access files outside skill directory.`;
+        }
+        return `File "${args.filename}" not found in skill "${skill.name}".`;
       }
+      const canonicalPath = canonicalPathResult.path;
 
       try {
         const content = await fs.readFile(canonicalPath, "utf8");
